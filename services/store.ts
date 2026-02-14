@@ -190,24 +190,70 @@ export function useGoldenBuddyStore() {
   };
 
   const respondToInvite = async (inviteId: string, action: 'ACCEPTED' | 'DECLINED', note?: string) => {
-    setState(prev => ({
-      ...prev,
-      invites: prev.invites.map(inv => inv.id === inviteId ? { ...inv, status: action, coordinationNote: note || inv.coordinationNote, respondedAt: Date.now() } : inv)
-    }));
+  if (!state.currentSession) return;
 
-    try {
-      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${action}`, { method: 'POST' });
-      
-      if (state.currentSession) {
-        const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession.id}`);
-        const inboxText = await inboxRes.text();
-        const cleanedInbox = inboxText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"');
-        let inbox = JSON.parse(cleanedInbox && cleanedInbox !== "null" ? cleanedInbox : "[]") as Invite[];
-        inbox = inbox.filter(i => i.id !== inviteId);
-        await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${state.currentSession.id}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
+  let finalStatus: InviteStatus = action;
+
+  setState(prev => ({
+    ...prev,
+    invites: prev.invites.map(inv => {
+      if (inv.id !== inviteId) return inv;
+
+      // ensure acceptedBy exists
+      const acceptedBy = inv.acceptedBy ? [...inv.acceptedBy] : [];
+
+      if (action === 'ACCEPTED') {
+        // add this user if not already
+        if (!acceptedBy.includes(state.currentSession!.id)) {
+          acceptedBy.push(state.currentSession!.id);
+        }
+
+        // BOTH users accepted → final ACCEPTED
+        if (acceptedBy.length >= 2) {
+          finalStatus = 'ACCEPTED';
+        } else {
+          finalStatus = 'PENDING'; // waiting other side
+        }
+
+        return {
+          ...inv,
+          acceptedBy,
+          status: finalStatus,
+          coordinationNote: note || inv.coordinationNote,
+          respondedAt: Date.now()
+        };
       }
-    } catch (e) {}
-  };
+
+      if (action === 'DECLINED') {
+        finalStatus = 'DECLINED';
+        return {
+          ...inv,
+          status: 'DECLINED',
+          respondedAt: Date.now()
+        };
+      }
+
+      return inv;
+    })
+  }));
+
+  try {
+    // Only send ACCEPTED to relay when both accepted
+    if (finalStatus === 'ACCEPTED' || finalStatus === 'DECLINED') {
+      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${finalStatus}`, { method: 'POST' });
+    }
+
+    // clean inbox (existing logic)
+    const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession.id}`);
+    const inboxText = await inboxRes.text();
+    const cleanedInbox = inboxText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"');
+    let inbox = JSON.parse(cleanedInbox && cleanedInbox !== "null" ? cleanedInbox : "[]") as Invite[];
+    inbox = inbox.filter(i => i.id !== inviteId);
+    await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${state.currentSession.id}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
+
+  } catch (e) {}
+};
+
 
   const updateInviteNote = (inviteId: string, note: string) => {
     setState(prev => ({
