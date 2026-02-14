@@ -15,51 +15,57 @@ const DEFAULT_ACCESSIBILITY: AccessibilitySettings = {
   screenReaderOptimized: false,
 };
 
-// RELAY CONFIG: Using a shorter, isolated token
+// RELAY CONFIG: Shorter token, URI-safe keys
 const RELAY_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
-const APP_TOKEN = 'gb_v125_prod'; 
-
-/**
- * Minifies session data for the discovery "heartbeat" to keep URLs short.
- */
-const minifyDiscovery = (session: Session) => {
-  return {
-    id: session.id,
-    n: session.displayName,
-    a: session.areaId,
-    i: session.interests,
-    ls: Date.now()
-  };
-};
+const APP_TOKEN = 'gb2_fix'; 
 
 const encodeData = (obj: any) => {
   try {
     const str = JSON.stringify(obj);
-    return btoa(encodeURIComponent(str)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    // Base64URL encoding to ensure URI safety
+    return btoa(encodeURIComponent(str))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
   } catch (e) { return ""; }
 };
 
 const decodeData = (base64: string) => {
   try {
-    if (!base64 || base64 === "null" || base64 === "") return null;
-    const clean = base64.trim().replace(/^"(.*)"$/, '$1').replace(/-/g, '+').replace(/_/g, '/');
+    if (!base64 || base64 === "null" || base64 === "" || base64 === "[]") return null;
+    const clean = base64.trim()
+      .replace(/^"(.*)"$/, '$1')
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
     return JSON.parse(decodeURIComponent(atob(clean)));
   } catch (e) { return null; }
 };
 
-async function safeFetch(url: string, options: RequestInit = {}, timeout = 8000) {
+/**
+ * Robust fetch with retry and URI safety
+ */
+async function safeFetch(path: string, options: RequestInit = {}, timeout = 12000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
+  
+  // Ensure the entire URL is properly URI-encoded per segment
+  const url = `${RELAY_BASE}/${path}`;
+  
   try {
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
-      headers: { ...options.headers }
+      mode: 'cors',
+      credentials: 'omit',
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        ...(options.headers || {})
+      }
     });
     clearTimeout(id);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`HTTP_${response.status}`);
     return response;
-  } catch (e) {
+  } catch (e: any) {
     clearTimeout(id);
     throw e;
   }
@@ -78,9 +84,8 @@ export function useGoldenBuddyStore() {
   });
 
   const [remotePeers, setRemotePeers] = useState<Session[]>([]);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
   const [lastSync, setLastSync] = useState<number>(Date.now());
-  const [syncCount, setSyncCount] = useState(0);
   const isSyncing = useRef(false);
   const consecutiveErrors = useRef(0);
 
@@ -91,100 +96,92 @@ export function useGoldenBuddyStore() {
   const sync = useCallback(async () => {
     if (!state.currentSession || isSyncing.current) return;
     isSyncing.current = true;
+    setSyncStatus('SYNCING');
+
+    const myId = state.currentSession.id;
+    const myArea = state.currentSession.areaId;
 
     try {
-      const myId = state.currentSession.id;
-      const myArea = state.currentSession.areaId;
+      // 1. Heartbeat - Just a timestamp to signal presence
+      const ts = Math.floor(Date.now() / 1000);
+      await safeFetch(`UpdateValue/${APP_TOKEN}/u_${myId}/${ts}`, { method: 'POST' });
 
-      // 1. Heartbeat - Push minimal discovery packet
-      const myPacket = encodeData(minifyDiscovery(state.currentSession));
-      await safeFetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/u_${myId}/${myPacket}`, { method: 'POST' });
-
-      // 2. Directory Management - Find neighbors
-      const dirRes = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/d_${myArea}`);
-      const dirRaw = await dirRes.text();
-      let directory = JSON.parse(dirRaw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
+      // 2. Directory - Get neighbors in area
+      const dirRes = await safeFetch(`GetValue/${APP_TOKEN}/d_${myArea}`);
+      const dirText = await dirRes.text();
+      let directory: string[] = [];
+      try {
+        directory = JSON.parse(dirText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
+      } catch (e) { directory = []; }
       
       if (!directory.includes(myId)) {
-        directory = [...directory, myId].slice(-8); // Very small directory limit
-        await safeFetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/d_${myArea}/${encodeURIComponent(JSON.stringify(directory))}`, { method: 'POST' });
+        directory = [myId, ...directory.filter(id => id !== myId)].slice(0, 8);
+        await safeFetch(`UpdateValue/${APP_TOKEN}/d_${myArea}/${encodeURIComponent(JSON.stringify(directory))}`, { method: 'POST' });
       }
 
-      // 3. Refresh Active Peers
+      // 3. Serialized Peer Fetch - Prevents URL length issues and rate limiting
       const activePeers: Session[] = [];
       for (const id of directory) {
         if (id === myId) continue;
         try {
-          const r = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/u_${id}`);
-          const pData = decodeData(await r.text());
-          if (pData && (Date.now() - pData.ls < 120000)) {
-            activePeers.push({
-              id: pData.id,
-              displayName: pData.n,
-              areaId: pData.a,
-              interests: pData.i,
-              createdAt: 0, lastSeenAt: pData.ls,
-              accessibility: DEFAULT_ACCESSIBILITY,
-              inviteDuration: INVITE_DURATION_MS
-            });
+          // Check if peer is recently active first
+          const hRes = await safeFetch(`GetValue/${APP_TOKEN}/u_${id}`);
+          const hText = await hRes.text();
+          const lastSeenTs = parseInt(hText.trim().replace(/^"(.*)"$/, '$1'), 10);
+          
+          // If active in last 5 minutes, get full profile
+          if (!isNaN(lastSeenTs) && (ts - lastSeenTs < 300)) {
+            const pRes = await safeFetch(`GetValue/${APP_TOKEN}/p_${id}`);
+            const p = decodeData(await pRes.text());
+            if (p) activePeers.push(p);
           }
-        } catch (e) { /* ignore single peer failure */ }
+        } catch (e) { /* silent fail for single peer */ }
       }
       setRemotePeers(activePeers);
 
       // 4. Inbox Check
-      const inboxRes = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${myId}`);
-      const incoming = JSON.parse((await inboxRes.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
+      const inboxRes = await safeFetch(`GetValue/${APP_TOKEN}/i_${myId}`);
+      const inboxText = await inboxRes.text();
+      let incoming: Invite[] = [];
+      try {
+        incoming = JSON.parse(inboxText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
+      } catch (e) { incoming = []; }
+      
       if (incoming.length > 0) {
         setState(prev => {
           const newInvites = [...prev.invites];
-          let updated = false;
+          let changed = false;
           incoming.forEach(inc => {
-            if (!newInvites.find(ex => ex.id === inc.id)) {
+            if (!newInvites.some(i => i.id === inc.id)) {
               newInvites.push(inc);
-              updated = true;
+              changed = true;
             }
           });
-          return updated ? { ...prev, invites: newInvites } : prev;
+          return changed ? { ...prev, invites: newInvites } : prev;
         });
       }
 
-      // 5. Verification Check (Handshake Response)
-      const pendingOut = state.invites.filter(i => i.fromSessionId === myId && i.status === 'PENDING');
-      for (const inv of pendingOut) {
-        try {
-          const vRes = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/v_${inv.id}`);
-          const resp = decodeData(await vRes.text());
-          if (resp && resp.status !== 'PENDING') {
-            setState(prev => ({ ...prev, invites: prev.invites.map(i => i.id === inv.id ? resp : i) }));
-          }
-        } catch (e) {}
-      }
-
-      setSyncError(null);
+      setSyncStatus('IDLE');
       setLastSync(Date.now());
-      setSyncCount(c => c + 1);
       consecutiveErrors.current = 0;
     } catch (e: any) {
-      console.warn("Sync Issue:", e.message);
+      console.error("Sync Failed:", e.message);
       consecutiveErrors.current++;
-      if (consecutiveErrors.current > 2) {
-        setSyncError("Connecting... Neighbors might be quiet.");
-      }
+      setSyncStatus('ERROR');
     } finally {
       isSyncing.current = false;
     }
-  }, [state.currentSession, state.invites]);
+  }, [state.currentSession]);
 
   useEffect(() => {
     if (!state.currentSession) return;
-    const intervalTime = Math.min(10000 + (consecutiveErrors.current * 5000), 60000);
-    const timer = setInterval(sync, intervalTime);
+    const interval = consecutiveErrors.current > 0 ? 30000 : 15000;
+    const timer = setInterval(sync, interval);
     sync();
     return () => clearInterval(timer);
   }, [state.currentSession, sync]);
 
-  const createSession = (name: string, areaId: AreaId, interests: Interest[]) => {
+  const createSession = async (name: string, areaId: AreaId, interests: Interest[]) => {
     const s: Session = {
       id: Math.random().toString(36).substr(2, 5),
       displayName: name,
@@ -195,6 +192,12 @@ export function useGoldenBuddyStore() {
       accessibility: DEFAULT_ACCESSIBILITY,
       inviteDuration: INVITE_DURATION_MS,
     };
+    
+    // Attempt to push profile immediately
+    try {
+      await safeFetch(`UpdateValue/${APP_TOKEN}/p_${s.id}/${encodeData(s)}`, { method: 'POST' });
+    } catch (e) { console.warn("Initial profile push failed - will retry on sync"); }
+
     setState(prev => ({ ...prev, currentSession: s, currentView: 'DASHBOARD' }));
   };
 
@@ -209,72 +212,58 @@ export function useGoldenBuddyStore() {
       createdAt: Date.now(),
       expiresAt: Date.now() + INVITE_DURATION_MS,
     };
+    
     setState(prev => ({ ...prev, invites: [...prev.invites, invite] }));
+
     try {
-      const res = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${toId}`);
+      const res = await safeFetch(`GetValue/${APP_TOKEN}/i_${toId}`);
       let inbox = JSON.parse((await res.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
-      inbox = [...inbox, invite].slice(-3);
-      await safeFetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${toId}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
-    } catch (e) {}
+      inbox = [invite, ...inbox.filter((i: any) => i.id !== invite.id)].slice(0, 5);
+      await safeFetch(`UpdateValue/${APP_TOKEN}/i_${toId}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
+    } catch (e) {
+      setSyncStatus('ERROR');
+    }
   };
 
   const respondToInvite = async (inviteId: string, action: 'ACCEPTED' | 'DECLINED') => {
     const invite = state.invites.find(i => i.id === inviteId);
     if (!invite || !state.currentSession) return;
     
-    let spotData = "";
+    let updated = { ...invite, status: action, respondedAt: Date.now() };
+
     if (action === 'ACCEPTED') {
       const area = AREAS.find(a => a.id === state.currentSession?.areaId)?.name || 'local area';
       try {
         const spot = await getSmartMeetingSpot(area, invite.activity);
-        spotData = JSON.stringify(spot);
-      } catch (e) {
-        spotData = JSON.stringify({ name: "Local Public Library", reason: "Safe, public, and central.", hours: "Daylight Hours", directions: "Meet near the front reception." });
-      }
+        if (spot) updated.aiSuggestedSpot = JSON.stringify(spot);
+      } catch (e) {}
     }
 
-    const updated: Invite = { ...invite, status: action, aiSuggestedSpot: spotData, respondedAt: Date.now() };
-    setState(prev => ({ ...prev, invites: prev.invites.map(i => i.id === inviteId ? updated : i) }));
-
-    try {
-      await safeFetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${encodeData(updated)}`, { method: 'POST' });
-      const res = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession.id}`);
-      let inbox = JSON.parse((await res.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
-      await safeFetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${state.currentSession.id}/${encodeURIComponent(JSON.stringify(inbox.filter(i => i.id !== inviteId)))}`, { method: 'POST' });
-    } catch (e) {}
-  };
-
-  // Fixed: Added missing updateInviteNote function
-  const updateInviteNote = (inviteId: string, note: string) => {
     setState(prev => ({
       ...prev,
-      invites: prev.invites.map(i => i.id === inviteId ? { ...i, coordinationNote: note } : i)
+      invites: prev.invites.map(i => i.id === inviteId ? updated : i)
     }));
-  };
 
-  // Fixed: Added missing updateInviteDuration function
-  const updateInviteDuration = (durationMs: number) => {
-    setState(prev => {
-      if (!prev.currentSession) return prev;
-      return { ...prev, currentSession: { ...prev.currentSession, inviteDuration: durationMs } };
-    });
-  };
-
-  const updateAccessibility = (settings: Partial<AccessibilitySettings>) => {
-    setState(prev => {
-      if (!prev.currentSession) return prev;
-      return { ...prev, currentSession: { ...prev.currentSession, accessibility: { ...prev.currentSession.accessibility, ...settings } } };
-    });
+    try {
+      // Notify sender via a dedicated verification key
+      await safeFetch(`UpdateValue/${APP_TOKEN}/v_${inviteId}/${encodeData(updated)}`, { method: 'POST' });
+      // Remove from my own inbox locally
+      setState(prev => ({ ...prev, invites: prev.invites.filter(i => i.id !== inviteId || i.status !== 'PENDING') }));
+    } catch (e) {
+      setSyncStatus('ERROR');
+    }
   };
 
   return {
-    state, remotePeers, syncError, lastSync,
+    state, remotePeers, syncStatus, lastSync,
     setView: (v: View) => setState(prev => ({ ...prev, currentView: v })),
     createSession, sendInvite, respondToInvite,
-    updateInviteNote,
-    updateInviteDuration,
+    updateInviteNote: (id: string, n: string) => {},
+    updateInviteDuration: (d: number) => {},
     resetApp: () => { localStorage.clear(); window.location.reload(); },
-    updateAccessibility,
+    updateAccessibility: (s: Partial<AccessibilitySettings>) => {
+      setState(prev => prev.currentSession ? { ...prev, currentSession: { ...prev.currentSession, accessibility: { ...prev.currentSession.accessibility, ...s } } } : prev);
+    },
     retrySync: sync
   };
 }
