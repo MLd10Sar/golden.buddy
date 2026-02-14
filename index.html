@@ -16,12 +16,9 @@
     }
     .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
     .animate-slideIn { animation: slideIn 0.5s ease-out; }
-    .animate-scaleUp { animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-    @keyframes scaleUp { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     
-    /* Custom Scrollbar for Senior Friendly Design */
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
@@ -34,6 +31,7 @@
 {
   "imports": {
     "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
     "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
     "@google/genai": "https://esm.sh/@google/genai@1.41.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
