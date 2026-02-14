@@ -17,7 +17,6 @@ const App: React.FC = () => {
     createSession, 
     sendInvite, 
     respondToInvite, 
-    updateInviteNote, 
     resetApp, 
     updateAccessibility,
     updateInviteDuration
@@ -28,81 +27,52 @@ const App: React.FC = () => {
   const [tempInterests, setTempInterests] = useState<Interest[]>([]);
 
   const handleFinishOnboarding = () => {
-    if (tempArea) {
-      createSession(tempName || 'Buddy', tempArea, tempInterests);
-    }
+    if (tempArea) createSession(tempName || 'Neighbor', tempArea, tempInterests);
   };
-
-  // Accessibility styling logic
-  const accessibilityClasses = useMemo(() => {
-    if (!state.currentSession) return '';
-    const { fontSize, contrastMode } = state.currentSession.accessibility;
-    let classes = '';
-    
-    // Font Size
-    if (fontSize === 'large') classes += ' text-lg';
-    else if (fontSize === 'extra-large') classes += ' text-xl';
-    else classes += ' text-base';
-
-    // Contrast
-    if (contrastMode === 'high') classes += ' grayscale-[0.2] contrast-[1.2] brightness-[0.9]';
-
-    return classes;
-  }, [state.currentSession?.accessibility]);
 
   const renderView = () => {
     switch (state.currentView) {
-      case 'WELCOME':
-        return <WelcomeView onNext={() => setView('NAME')} />;
-      case 'NAME':
-        return <NamePicker name={tempName} onSetName={setTempName} onNext={() => setView('LOCATION')} onBack={() => setView('WELCOME')} />;
-      case 'LOCATION':
-        return <LocationPicker selectedArea={tempArea} onSelect={(area) => { setTempArea(area); setView('INTERESTS'); }} onBack={() => setView('NAME')} />;
-      case 'INTERESTS':
-        return <InterestPicker selectedInterests={tempInterests} onToggle={(interest) => { setTempInterests(prev => prev.includes(interest) ? prev.filter(i => i !== interest) : [...prev, interest]); }} onNext={handleFinishOnboarding} onBack={() => setView('LOCATION')} />;
-      case 'DASHBOARD':
-        return <Dashboard session={state.currentSession!} invites={state.invites} remotePeers={remotePeers} onSendInvite={sendInvite} onRespond={respondToInvite} onUpdateNote={updateInviteNote} onReset={resetApp} />;
-      case 'PROFILE':
-        return (
-          <ProfileView 
-            session={state.currentSession!} 
-            onBack={() => setView('DASHBOARD')} 
-            onEditInterests={() => setView('INTERESTS')} 
-            onUpdateName={(n) => {}} 
-            onReset={resetApp} 
-            onUpdateAccessibility={updateAccessibility}
-            onUpdateInviteDuration={updateInviteDuration}
-          />
-        );
-      default:
-        return <WelcomeView onNext={() => setView('NAME')} />;
+      case 'WELCOME': return <WelcomeView onNext={() => setView('NAME')} />;
+      case 'NAME': return <NamePicker name={tempName} onSetName={setTempName} onNext={() => setView('LOCATION')} onBack={() => setView('WELCOME')} />;
+      case 'LOCATION': return <LocationPicker selectedArea={tempArea} onSelect={(area) => { setTempArea(area); setView('INTERESTS'); }} onBack={() => setView('NAME')} />;
+      case 'INTERESTS': return <InterestPicker selectedInterests={tempInterests} onToggle={(interest) => setTempInterests(prev => prev.includes(interest) ? prev.filter(i => i !== interest) : [...prev, interest])} onNext={handleFinishOnboarding} onBack={() => setView('LOCATION')} />;
+      case 'DASHBOARD': return <Dashboard session={state.currentSession!} invites={state.invites} remotePeers={remotePeers} onSendInvite={sendInvite} onRespond={respondToInvite} onUpdateNote={() => {}} onReset={resetApp} />;
+      case 'PROFILE': return <ProfileView session={state.currentSession!} onBack={() => setView('DASHBOARD')} onEditInterests={() => setView('INTERESTS')} onUpdateName={() => {}} onReset={resetApp} onUpdateAccessibility={updateAccessibility} onUpdateInviteDuration={updateInviteDuration} />;
+      default: return <WelcomeView onNext={() => setView('NAME')} />;
     }
   };
 
   return (
-    <div className={`min-h-screen max-w-md mx-auto bg-white shadow-2xl flex flex-col relative overflow-hidden ring-1 ring-slate-200 transition-all duration-300 ${accessibilityClasses}`}>
-      <header className="p-4 border-b bg-amber-400 flex justify-between items-center shrink-0 z-50">
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('DASHBOARD')}>
-          <span className="text-2xl" role="img" aria-hidden="true">🌟</span>
-          <h1 className="font-black text-xl tracking-tight text-amber-950 uppercase">GoldenBuddy</h1>
-        </div>
-        {state.currentSession && (
-          <button 
-            onClick={() => setView('PROFILE')} 
-            aria-label="View Profile"
-            className="bg-white/40 text-amber-950 text-xs font-black px-4 py-1.5 rounded-full hover:bg-white/60 transition-colors uppercase tracking-widest">
-            Profile
-          </button>
-        )}
-      </header>
+    <div className="fixed inset-0 bg-slate-900 flex items-center justify-center font-sans">
+      <div className="w-full h-[100dvh] max-w-md bg-slate-50 relative flex flex-col md:h-[90vh] md:rounded-[3rem] md:shadow-2xl overflow-hidden transition-all duration-500 ease-in-out">
+        {/* Mobile-Native Glass Header */}
+        <header className="safe-top px-6 py-4 bg-white/70 backdrop-blur-lg border-b border-slate-100 flex justify-between items-center z-50">
+          <div className="flex items-center gap-2" onClick={() => setView('DASHBOARD')}>
+            <div className="w-9 h-9 bg-amber-400 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-200">
+              <span className="text-xl">🌟</span>
+            </div>
+            <h1 className="font-extrabold text-lg tracking-tight text-slate-900 uppercase">GoldenBuddy</h1>
+          </div>
+          {state.currentSession && (
+            <button 
+              onClick={() => setView('PROFILE')} 
+              className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200 active:scale-90 transition-transform">
+              ⚙️
+            </button>
+          )}
+        </header>
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden relative bg-amber-50/30" role="main">
-        {renderView()}
-      </main>
+        <main className="flex-1 overflow-y-auto no-scrollbar relative animate-spring">
+          {renderView()}
+        </main>
 
-      <footer className="bg-slate-900 text-slate-500 text-[9px] text-center py-2 font-black uppercase tracking-widest border-t border-slate-800 shrink-0">
-        AI-Enhanced Safety & Privacy First
-      </footer>
+        <footer className="safe-bottom p-4 flex flex-col items-center bg-white/50 backdrop-blur-md">
+           <div className="flex items-center gap-2 px-4 py-2 bg-green-50 rounded-full border border-green-100">
+             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+             <span className="text-[10px] font-extrabold text-green-700 uppercase tracking-widest">Neighborhood Live</span>
+           </div>
+        </footer>
+      </div>
     </div>
   );
 };
