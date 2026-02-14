@@ -1,0 +1,8 @@
+{
+  "name": "GoldenBuddy AI",
+  "description": "An AI-enhanced, privacy-first walking companion for seniors. Now features AI-powered matching insights, smart meeting spot suggestions via Google Maps grounding, and voice-assisted coordination notes.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}
