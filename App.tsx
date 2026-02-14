@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useGoldenBuddyStore } from './services/store';
 import { WelcomeView } from './views/Welcome';
@@ -36,40 +35,37 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 bg-[#020617] flex items-center justify-center font-sans overflow-hidden">
-      <div className="w-full h-[100dvh] max-w-md bg-white relative flex flex-col md:h-[92vh] md:rounded-[3rem] md:shadow-[0_0_120px_rgba(0,0,0,0.8)] overflow-hidden">
+    <div className="fixed inset-0 bg-[#1e1b4b] flex items-center justify-center font-sans overflow-hidden">
+      <div className="w-full h-[100dvh] max-w-md bg-white relative flex flex-col md:h-[90vh] md:rounded-[4rem] md:shadow-[0_0_100px_rgba(0,0,0,0.7)] overflow-hidden">
         
-        {/* Neon Emerald Header */}
-        <header className="safe-top px-8 py-6 bg-slate-900 text-white flex justify-between items-center z-[100] border-b border-emerald-500/30">
+        {/* Modern Violet Header */}
+        <header className="safe-top px-8 py-6 bg-indigo-900 text-white flex justify-between items-center z-[100] border-b border-indigo-800 shadow-xl">
           <div className="flex items-center gap-4" onClick={() => setView('DASHBOARD')}>
-            <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg neon-glow">
-              <span className="text-2xl">🌱</span>
+            <div className="w-12 h-12 bg-pink-500 rounded-2xl flex items-center justify-center shadow-lg shadow-pink-500/40">
+              <span className="text-2xl">🤝</span>
             </div>
             <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <h1 className="font-black text-xl tracking-tighter uppercase leading-none text-emerald-400">GoldenMesh</h1>
-                <span className="bg-slate-800 text-[8px] font-black px-1.5 py-0.5 rounded text-slate-500 uppercase tracking-widest border border-slate-700">V6.0</span>
-              </div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Live Safety Relay</span>
+              <h1 className="font-extrabold text-xl tracking-tighter uppercase leading-none">BuddyLive</h1>
+              <span className="text-[10px] font-bold text-pink-300 uppercase tracking-widest mt-1">Connecting Neighbors</span>
             </div>
           </div>
           {state.currentSession && (
             <button 
               onClick={() => setView('PROFILE')} 
-              className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center border border-slate-700 active:scale-90 transition-transform shadow-inner">
+              className="w-12 h-12 bg-indigo-800 rounded-full flex items-center justify-center border border-indigo-700 active:scale-90 transition-transform">
               <span className="text-xl">⚙️</span>
             </button>
           )}
         </header>
 
-        <main className="flex-1 overflow-y-auto no-scrollbar relative bg-slate-50">
+        <main className="flex-1 overflow-y-auto no-scrollbar relative bg-indigo-50/30">
           {renderView()}
         </main>
 
-        <footer className="safe-bottom px-8 py-4 bg-white/90 backdrop-blur-xl border-t border-slate-100 flex justify-center">
-           <div className="flex items-center gap-2 px-6 py-2 bg-emerald-50 rounded-full border border-emerald-100 neon-glow">
-             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-             <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Neighbor Mesh Active</span>
+        <footer className="safe-bottom px-8 py-6 bg-white/80 backdrop-blur-xl border-t border-indigo-50 flex justify-center">
+           <div className="flex items-center gap-3 px-6 py-2 bg-pink-50 rounded-full border border-pink-100">
+             <div className="w-3 h-3 rounded-full bg-pink-500 animate-pulse" />
+             <span className="text-[11px] font-black text-pink-900 uppercase tracking-widest">Active Safe Zone</span>
            </div>
         </footer>
       </div>
