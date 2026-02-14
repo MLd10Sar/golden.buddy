@@ -1,52 +1,22 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>GoldenBuddy - Neighborhood Connect</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GoldenBuddy AI - Fixed Sync</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --safe-top: env(safe-area-inset-top);
-      --safe-bottom: env(safe-area-inset-bottom);
-      --primary: #8b5cf6;
-      --secondary: #ec4899;
-    }
-    body { 
-      font-family: 'Plus Jakarta Sans', sans-serif; 
-      -webkit-tap-highlight-color: transparent; 
-      overscroll-behavior-y: none;
-      background-color: #1e1b4b; /* Deep Indigo background */
-      margin: 0; padding: 0;
-      height: 100%; overflow: hidden;
-    }
-    .safe-top { padding-top: var(--safe-top); }
-    .safe-bottom { padding-bottom: calc(var(--safe-bottom) + 1.5rem); }
-    
-    .animate-pop { animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-    @keyframes pop {
-      from { transform: scale(0.9) translateY(20px); opacity: 0; }
-      to { transform: scale(1) translateY(0); opacity: 1; }
-    }
-    
-    .clay-card {
-      background: white;
-      border-radius: 3.5rem;
-      box-shadow: 0 30px 60px -12px rgba(0,0,0,0.25), inset 0 -6px 0 rgba(0,0,0,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-    }
-
-    .pill-button {
-      border-radius: 2.5rem;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 15px 30px -5px rgba(0,0,0,0.2);
-    }
-    .pill-button:active { transform: scale(0.96); box-shadow: 0 5px 15px -3px rgba(0,0,0,0.2); }
-    
-    .no-scrollbar::-webkit-scrollbar { display: none; }
-    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: contain; }
+    .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
+    .animate-slideIn { animation: slideIn 0.5s ease-out; }
+    .animate-scaleUp { animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes scaleUp { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    select { appearance: none; -webkit-appearance: none; }
   </style>
   <script>window.process = { env: { API_KEY: "" } };</script>
   <script type="importmap">
@@ -61,7 +31,7 @@
 }
 </script>
 </head>
-<body>
+<body class="bg-slate-50">
   <div id="root"></div>
   <script type="text/babel" data-type="module" data-presets="typescript,react" src="./index.tsx"></script>
 </body>
