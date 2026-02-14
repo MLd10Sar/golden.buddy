@@ -16,13 +16,12 @@ const DEFAULT_ACCESSIBILITY: AccessibilitySettings = {
   screenReaderOptimized: false,
 };
 
-// RELAY CONFIG: Stable and unique token to ensure clean neighborhood data
+// RELAY CONFIG: Using a fresh, unique token to avoid data collisions
 const RELAY_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
-const APP_TOKEN = 'gb_v115_final'; 
+const APP_TOKEN = 'gb_v120_stable_sync'; 
 
 const encodeData = (obj: any) => {
   try {
-    // We use a cleaner b64 to prevent URL-unfriendly character issues
     const str = JSON.stringify(obj);
     return btoa(encodeURIComponent(str)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   } catch (e) {
@@ -40,13 +39,35 @@ const decodeData = (base64: string) => {
   }
 };
 
+/**
+ * Robust fetch with a timeout to prevent the app from hanging
+ */
+async function safeFetch(url: string, options: RequestInit = {}, timeout = 5000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      mode: 'cors',
+      cache: 'no-store'
+    });
+    clearTimeout(id);
+    if (!response.ok) throw new Error(`Server Error: ${response.status}`);
+    return response;
+  } catch (e) {
+    clearTimeout(id);
+    throw e;
+  }
+}
+
 export function useGoldenBuddyStore() {
   const [state, setState] = useState<AppState>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return { ...initialState, ...parsed, currentView: 'WELCOME' };
+        return { ...initialState, ...parsed, currentView: parsed.currentSession ? 'DASHBOARD' : 'WELCOME' };
       } catch (e) {
         return initialState;
       }
@@ -56,6 +77,7 @@ export function useGoldenBuddyStore() {
 
   const [remotePeers, setRemotePeers] = useState<Session[]>([]);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<number>(Date.now());
   const isSyncing = useRef(false);
 
   useEffect(() => {
@@ -70,29 +92,37 @@ export function useGoldenBuddyStore() {
       const myId = state.currentSession.id;
       const myArea = state.currentSession.areaId;
 
-      // 1. Presence (Heartbeat)
+      // 1. Presence (Heartbeat) - Post my current profile
       const myProfile = encodeData({ ...state.currentSession, lastSeenAt: Date.now() });
-      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/u_${myId}/${myProfile}`, { method: 'POST' });
+      await safeFetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/u_${myId}/${myProfile}`, { method: 'POST' });
 
-      // 2. Directory Management
-      const dirRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/d_${myArea}`);
+      // 2. Directory Management - Ensure I am in the area list
+      const dirRes = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/d_${myArea}`);
       const dirRaw = await dirRes.text();
       let directory = JSON.parse(dirRaw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
+      
       if (!directory.includes(myId)) {
-        directory = [...directory, myId].slice(-15); // Keep list small for stability
-        await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/d_${myArea}/${encodeURIComponent(JSON.stringify(directory))}`, { method: 'POST' });
+        directory = [...directory, myId].slice(-10); // Keep directory very small for stability
+        await safeFetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/d_${myArea}/${encodeURIComponent(JSON.stringify(directory))}`, { method: 'POST' });
       }
 
-      // 3. Neighbor Refresh
-      const peerData = await Promise.all(directory.filter((id: string) => id !== myId).map(async (id: string) => {
-        const r = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/u_${id}`);
-        const t = await r.text();
-        return decodeData(t);
-      }));
-      setRemotePeers(peerData.filter(p => p && (Date.now() - p.lastSeenAt < 60000)));
+      // 3. Neighbor Refresh - Find others in my area
+      const activePeers: Session[] = [];
+      for (const id of directory) {
+        if (id === myId) continue;
+        try {
+          const r = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/u_${id}`);
+          const t = await r.text();
+          const p = decodeData(t);
+          if (p && (Date.now() - p.lastSeenAt < 90000)) {
+            activePeers.push(p);
+          }
+        } catch (e) { /* Skip failed peer fetch */ }
+      }
+      setRemotePeers(activePeers);
 
-      // 4. Inbox Sync
-      const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${myId}`);
+      // 4. Inbox Sync - Check for new invites
+      const inboxRes = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${myId}`);
       const inboxRaw = await inboxRes.text();
       const incoming = JSON.parse(inboxRaw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
       
@@ -110,21 +140,26 @@ export function useGoldenBuddyStore() {
         });
       }
 
-      // 5. Response Handshake
+      // 5. Response Handshake - Check if my sent invites were accepted
       const pendingOut = state.invites.filter(i => i.fromSessionId === myId && i.status === 'PENDING');
       for (const inv of pendingOut) {
-        const vRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/v_${inv.id}`);
-        const vText = await vRes.text();
-        const resp = decodeData(vText);
-        if (resp && resp.status !== 'PENDING') {
-          setState(prev => ({
-            ...prev,
-            invites: prev.invites.map(i => i.id === inv.id ? resp : i)
-          }));
-        }
+        try {
+          const vRes = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/v_${inv.id}`);
+          const vText = await vRes.text();
+          const resp = decodeData(vText);
+          if (resp && resp.status !== 'PENDING') {
+            setState(prev => ({
+              ...prev,
+              invites: prev.invites.map(i => i.id === inv.id ? resp : i)
+            }));
+          }
+        } catch (e) {}
       }
+
       setSyncError(null);
-    } catch (e) {
+      setLastSync(Date.now());
+    } catch (e: any) {
+      console.error("Sync Error:", e);
       setSyncError("Connection low. Retrying...");
     } finally {
       isSyncing.current = false;
@@ -133,7 +168,8 @@ export function useGoldenBuddyStore() {
 
   useEffect(() => {
     if (!state.currentSession) return;
-    const interval = setInterval(sync, 5000); // 5s is a good balance for KV stability
+    const interval = setInterval(sync, 10000); // Increased to 10s to stay under rate limits
+    sync(); // Initial sync
     return () => clearInterval(interval);
   }, [state.currentSession, sync]);
 
@@ -166,11 +202,13 @@ export function useGoldenBuddyStore() {
     setState(prev => ({ ...prev, invites: [...prev.invites, invite] }));
 
     try {
-      const res = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${toId}`);
+      const res = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${toId}`);
       let inbox = JSON.parse((await res.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
       inbox = [...inbox, invite].slice(-5);
-      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${toId}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
-    } catch (e) {}
+      await safeFetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${toId}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
+    } catch (e) {
+      setSyncError("Failed to send invite. Check connection.");
+    }
   };
 
   const respondToInvite = async (inviteId: string, action: 'ACCEPTED' | 'DECLINED') => {
@@ -184,7 +222,12 @@ export function useGoldenBuddyStore() {
         const spot = await getSmartMeetingSpot(area, invite.activity);
         spotData = JSON.stringify(spot);
       } catch (e) {
-        spotData = JSON.stringify({ name: "Local Public Library", reason: "Safe and public.", hours: "Varies", directions: "Meet inside near the main lobby seating." });
+        spotData = JSON.stringify({ 
+          name: "Local Public Library", 
+          reason: "Safe and public place for meeting.", 
+          hours: "Check local hours", 
+          directions: "Meet inside the main lobby." 
+        });
       }
     }
 
@@ -201,15 +244,14 @@ export function useGoldenBuddyStore() {
     }));
 
     try {
-      // 1. Send response to the sender's verification key
-      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${encodeData(updated)}`, { method: 'POST' });
-      
-      // 2. Clear from my own inbox
-      const res = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession.id}`);
+      await safeFetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${encodeData(updated)}`, { method: 'POST' });
+      const res = await safeFetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession.id}`);
       let inbox = JSON.parse((await res.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
       inbox = inbox.filter(i => i.id !== inviteId);
-      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${state.currentSession.id}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
-    } catch (e) {}
+      await safeFetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${state.currentSession.id}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
+    } catch (e) {
+      setSyncError("Failed to respond. Retrying...");
+    }
   };
 
   const updateAccessibility = (settings: Partial<AccessibilitySettings>) => {
@@ -246,7 +288,7 @@ export function useGoldenBuddyStore() {
   };
 
   return {
-    state, remotePeers, syncError,
+    state, remotePeers, syncError, lastSync,
     setView: (v: View) => setState(prev => ({ ...prev, currentView: v })),
     createSession, sendInvite, respondToInvite,
     updateInviteNote,
