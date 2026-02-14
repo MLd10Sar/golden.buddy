@@ -1,7 +1,7 @@
-
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Session, Invite, Interest } from '../types';
 import { AREAS } from '../constants';
+import { speakText } from '../services/geminiService';
 
 interface DashboardProps {
   session: Session;
@@ -14,50 +14,22 @@ interface DashboardProps {
 }
 
 const ACTIVITY_ICONS: Record<Interest, string> = {
-  'Walking': '👟',
-  'Chess': '♟️',
-  'Coffee & Chat': '☕',
-  'Bird Watching': '🦜',
-  'Gardening': '🌱'
+  'Walking': '👟', 'Chess': '♟️', 'Coffee & Chat': '☕', 'Bird Watching': '🦜', 'Gardening': '🌱'
 };
 
 const SAFETY_TIPS = [
-  { title: "Public Places Only", detail: "Meet in busy, well-lit areas like cafes or libraries. Never at home.", icon: "🏙️" },
-  { title: "Tell a Friend", detail: "Share your buddy's name and meeting location with a family member.", icon: "📱" },
-  { title: "Battery Check", detail: "Ensure your phone is fully charged before heading out.", icon: "🔋" },
-  { title: "Trust Your Gut", detail: "If you feel uneasy, it's perfectly okay to leave or cancel.", icon: "🛡️" }
+  { title: "Public Only", detail: "Meet in busy, well-lit cafes or libraries. Never at private homes.", icon: "🏙️" },
+  { title: "Battery Check", detail: "Charge your phone fully before leaving.", icon: "🔋" },
+  { title: "Tell a Relative", detail: "Share the location with family for peace of mind.", icon: "📱" }
 ];
-
-const SafetyCard: React.FC<{ tip: typeof SAFETY_TIPS[0] }> = ({ tip }) => {
-  const [open, setOpen] = useState(false);
-  return (
-    <button onClick={() => setOpen(!open)} className={`w-full text-left p-4 rounded-2xl border transition-all ${open ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-100'}`}>
-      <div className="flex items-center gap-3">
-        <span className="text-xl">{tip.icon}</span>
-        <div className="flex-1">
-          <p className={`font-black uppercase tracking-tight ${open ? 'text-amber-900' : 'text-slate-600 text-[10px]'}`}>{tip.title}</p>
-          {open && <p className="mt-2 text-sm font-medium text-slate-500 leading-snug">{tip.detail}</p>}
-        </div>
-        <span className="text-[9px] font-black text-slate-300 uppercase">{open ? 'Hide' : 'Info'}</span>
-      </div>
-    </button>
-  );
-};
 
 export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePeers, onSendInvite, onRespond, onUpdateNote, onReset }) => {
   const [selectedPeerId, setSelectedPeerId] = useState<string | null>(null);
-  const [showSafetyModal, setShowSafetyModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
-  // Incoming pending invites
-  const incoming = useMemo(() => 
-    invites.filter(i => i.toSessionId === session.id && i.status === 'PENDING'), 
-  [invites, session.id]);
-
-  // Active matched session
-  const activeMatch = useMemo(() => 
-    invites.find(i => i.status === 'ACCEPTED' && (i.fromSessionId === session.id || i.toSessionId === session.id)),
-  [invites, session.id]);
+  const incoming = useMemo(() => invites.filter(i => i.toSessionId === session.id && i.status === 'PENDING'), [invites, session.id]);
+  const activeMatch = useMemo(() => invites.find(i => i.status === 'ACCEPTED' && (i.fromSessionId === session.id || i.toSessionId === session.id)), [invites, session.id]);
 
   const buddy = useMemo(() => {
     if (!activeMatch) return null;
@@ -67,30 +39,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
 
   const spot = useMemo(() => {
     if (!activeMatch?.aiSuggestedSpot) return null;
-    try { return JSON.parse(activeMatch.aiSuggestedSpot); } 
-    catch (e) { return null; }
+    try { return JSON.parse(activeMatch.aiSuggestedSpot); } catch (e) { return null; }
   }, [activeMatch]);
 
-  const handleAccept = async (id: string) => {
-    setIsProcessing(id);
-    await onRespond(id, 'ACCEPTED');
-    setShowSafetyModal(true);
-    setIsProcessing(null);
-  };
-
-  const handleReject = async (id: string) => {
-    setIsProcessing(id);
-    await onRespond(id, 'DECLINED');
-    setIsProcessing(null);
+  const handleSpeak = async () => {
+    if (!spot || isSpeaking) return;
+    setIsSpeaking(true);
+    const text = `Meeting ${buddy?.displayName || 'neighbor'} at ${spot.name}. Location tip: ${spot.directions}. Safety reminder: ${spot.weatherTip}. See you there!`;
+    await speakText(text);
+    setTimeout(() => setIsSpeaking(false), 5000);
   };
 
   if (activeMatch) {
     return (
-      <div className="p-6 space-y-6 bg-slate-50 min-h-full pb-20 animate-fadeIn">
-        <div className="bg-green-600 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
+      <div className="p-6 space-y-6 bg-slate-50 min-h-full pb-32 animate-fadeIn">
+        <div className="bg-amber-500 rounded-[2.5rem] p-8 text-amber-950 shadow-2xl relative overflow-hidden border-b-8 border-amber-600">
           <div className="relative z-10">
-            <h3 className="text-4xl font-black tracking-tighter mb-1 leading-none">Meeting {buddy?.displayName || 'a Neighbor'}</h3>
-            <p className="font-bold opacity-80 mb-6">{activeMatch.activity} Session</p>
+            <h3 className="text-4xl font-black tracking-tighter mb-1 leading-none">Matched!</h3>
+            <p className="font-bold opacity-80 mb-6">Meeting with {buddy?.displayName || 'Neighbor'}</p>
             
             <div className="bg-white rounded-[2rem] p-6 shadow-xl text-slate-900 space-y-5">
               <div className="flex items-center gap-4">
@@ -99,45 +65,60 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Activity</p>
                   <p className="text-xl font-black">{activeMatch.activity}</p>
                 </div>
+                <button onClick={handleSpeak} disabled={isSpeaking} className={`ml-auto w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-md transition-all ${isSpeaking ? 'bg-amber-100 animate-pulse' : 'bg-amber-400 active:scale-90'}`}>
+                  {isSpeaking ? '⏳' : '🔊'}
+                </button>
               </div>
 
               <div className="pt-5 border-t border-slate-100">
-                <p className="text-[10px] font-black text-green-600 uppercase tracking-widest mb-2">Safe Public Spot</p>
+                <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3">Safe Public Meeting Spot</p>
                 {spot ? (
                   <div className="space-y-4">
                     <div>
                       <h4 className="text-2xl font-black tracking-tight leading-tight">{spot.name}</h4>
-                      <p className="text-xs font-medium text-slate-500 mt-1 leading-snug">{spot.reason}</p>
+                      <p className="text-xs font-medium text-slate-500 mt-1">{spot.reason}</p>
                     </div>
+                    
+                    <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-start gap-3">
+                      <span className="text-xl">🌤️</span>
+                      <div>
+                        <p className="text-[9px] font-black text-amber-800 uppercase tracking-widest">Weather Advisory</p>
+                        <p className="text-xs font-bold text-amber-900 leading-snug">{spot.weatherTip}</p>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">🕒 Hours</p>
-                        <p className="text-xs font-bold">{spot.hours || "Check locally"}</p>
+                        <p className="text-[8px] font-black text-slate-400 uppercase mb-1">🕒 Hours</p>
+                        <p className="text-[10px] font-bold">{spot.hours}</p>
                       </div>
                       <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">📍 Arrival</p>
-                        <p className="text-xs font-bold">{spot.directions || "Main Lobby"}</p>
+                        <p className="text-[8px] font-black text-slate-400 uppercase mb-1">📍 Arrival</p>
+                        <p className="text-[10px] font-bold">{spot.directions}</p>
                       </div>
                     </div>
-                    {spot.mapsUrl && (
-                      <a href={spot.mapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all">
-                        <span>🗺️</span> Open Google Maps
-                      </a>
-                    )}
+                    <a href={spot.mapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase shadow-lg">🗺️ Open Map</a>
                   </div>
                 ) : <p className="text-xs font-bold text-slate-400 animate-pulse">Finding a safe spot...</p>}
               </div>
             </div>
           </div>
-          <div className="absolute -right-8 -bottom-8 text-[15rem] opacity-5">🌟</div>
         </div>
 
         <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border border-slate-100">
-          <h4 className="font-black text-slate-900 uppercase tracking-tighter text-xl mb-6">Safety Protocol</h4>
-          <div className="space-y-3 mb-8">
-            {SAFETY_TIPS.map((tip, i) => <SafetyCard key={i} tip={tip} />)}
+          <h4 className="font-black text-slate-900 uppercase text-xs mb-6 tracking-widest">Safety Reminders</h4>
+          <div className="space-y-3">
+            {SAFETY_TIPS.map((tip, i) => (
+              <div key={i} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <span className="text-2xl">{tip.icon}</span>
+                <div className="flex-1">
+                  <p className="font-black text-[10px] text-slate-900 uppercase tracking-tight">{tip.title}</p>
+                  <p className="text-[10px] text-slate-500 font-medium leading-tight">{tip.detail}</p>
+                </div>
+              </div>
+            ))}
           </div>
-          <button onClick={onReset} className="w-full py-6 bg-slate-900 text-white rounded-[2.5rem] font-black text-xl uppercase tracking-tighter shadow-lg active:scale-95 transition-all">Sign Out</button>
+          <button onClick={onReset} className="mt-8 w-full py-5 bg-slate-100 text-slate-400 font-black rounded-[2rem] text-xs uppercase tracking-widest">Sign Out</button>
         </div>
       </div>
     );
@@ -148,48 +129,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
       <div className="p-6 space-y-8 flex-1 overflow-y-auto no-scrollbar pb-40">
         <div className="flex justify-between items-end">
           <div>
-            <h2 className="text-4xl font-black text-slate-900 tracking-tighter uppercase leading-none">Explore</h2>
-            <div className="flex items-center gap-2 mt-2">
-              <p className="text-amber-600 font-black text-[10px] uppercase tracking-widest">
-                📍 {AREAS.find(a => a.id === session.areaId)?.name || 'Local'}
-              </p>
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
-            </div>
+            <h2 className="text-4xl font-black text-slate-900 tracking-tighter uppercase leading-none">Buddy Map</h2>
+            <p className="text-amber-600 font-black text-[10px] uppercase tracking-widest mt-2">📍 {AREAS.find(a => a.id === session.areaId)?.name}</p>
           </div>
-          <button onClick={onReset} className="text-[10px] font-black text-slate-300 hover:text-red-400 uppercase tracking-widest underline transition-colors">Reset</button>
+          <button onClick={onReset} className="text-[9px] font-black text-slate-300 uppercase underline">Reset</button>
         </div>
 
         {incoming.length > 0 && (
-          <div className="space-y-4">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] ml-2">Neighbor Invites</h3>
+          <div className="space-y-4 animate-slideIn">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Neighbor Invites</h3>
             {incoming.map(inv => {
-              const invBuddy = remotePeers.find(p => p.id === inv.fromSessionId);
+              const peer = remotePeers.find(p => p.id === inv.fromSessionId);
               return (
-                <div key={inv.id} className="bg-amber-400 p-6 rounded-[2.5rem] shadow-xl border-b-4 border-amber-600 animate-slideIn">
+                <div key={inv.id} className="bg-white p-6 rounded-[2.5rem] shadow-xl border-4 border-amber-400">
                   <div className="flex items-center gap-4 mb-6">
-                    <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center text-3xl font-black shadow-sm">
-                      {invBuddy?.displayName[0] || 'N'}
-                    </div>
+                    <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center text-3xl font-black">{peer?.displayName[0] || '?'}</div>
                     <div className="flex-1">
-                      <p className="font-black text-amber-950 text-xl leading-tight">{invBuddy?.displayName || 'A Neighbor'}</p>
-                      <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest">Wants to play {inv.activity}</p>
+                      <p className="font-black text-slate-900 text-xl leading-tight">{peer?.displayName || 'Neighbor'}</p>
+                      <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Wants to {inv.activity}</p>
                     </div>
                   </div>
-                  <div className="flex gap-3">
-                    <button 
-                      onClick={() => handleAccept(inv.id)} 
-                      disabled={!!isProcessing}
-                      className="flex-1 bg-amber-950 text-white py-4 rounded-[1.5rem] font-black uppercase text-xs shadow-md active:scale-95 transition-all disabled:opacity-50"
-                    >
-                      {isProcessing === inv.id ? 'Accepting...' : 'Accept'}
-                    </button>
-                    <button 
-                      onClick={() => handleReject(inv.id)} 
-                      disabled={!!isProcessing}
-                      className="px-6 bg-white/40 text-amber-950 py-4 rounded-[1.5rem] font-black uppercase text-xs active:scale-95 transition-all disabled:opacity-50"
-                    >
-                      No
-                    </button>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setIsProcessing(inv.id); onRespond(inv.id, 'ACCEPTED'); }} disabled={!!isProcessing} className="flex-1 bg-amber-400 text-amber-950 py-4 rounded-2xl font-black uppercase text-xs shadow-md">Accept</button>
+                    <button onClick={() => { setIsProcessing(inv.id); onRespond(inv.id, 'DECLINED'); }} disabled={!!isProcessing} className="px-6 bg-slate-100 text-slate-400 py-4 rounded-2xl font-black uppercase text-xs">No</button>
                   </div>
                 </div>
               );
@@ -199,32 +161,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
 
         <div className="space-y-4">
           <div className="flex justify-between items-center ml-2">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Active Neighbors</h3>
-            <span className="text-[8px] font-black text-green-500 uppercase tracking-widest flex items-center gap-1">
-              <span className="w-1 h-1 bg-green-500 rounded-full animate-ping" />
-              Live
-            </span>
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nearby Neighbors</h3>
+            <span className="text-[9px] font-black text-green-500 flex items-center gap-1 uppercase">● Active</span>
           </div>
           {remotePeers.length === 0 ? (
-            <div className="py-20 text-center border-4 border-dashed border-slate-200 rounded-[3rem] bg-white/50 flex flex-col items-center gap-4">
-              <div className="text-6xl grayscale opacity-20">📻</div>
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] px-8 leading-relaxed max-w-[200px]">Scanning for buddies in your neighborhood...</p>
+            <div className="py-20 text-center border-4 border-dashed border-slate-200 rounded-[3rem] bg-white flex flex-col items-center gap-4">
+              <span className="text-5xl opacity-20">👋</span>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-8 leading-relaxed">It's quiet right now. Neighbors will appear here when they open the app!</p>
             </div>
           ) : (
-            <div className="grid gap-4">
+            <div className="grid gap-3">
               {remotePeers.map(peer => (
-                <button 
-                  key={peer.id}
-                  onClick={() => setSelectedPeerId(selectedPeerId === peer.id ? null : peer.id)}
-                  className={`w-full text-left p-6 rounded-[2.5rem] border-4 transition-all flex items-center gap-5 bg-white ${
-                    selectedPeerId === peer.id ? 'border-amber-400 scale-[1.02] shadow-xl' : 'border-transparent shadow-sm'
-                  }`}
-                >
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black shadow-inner ${
-                    selectedPeerId === peer.id ? 'bg-amber-400 text-amber-950' : 'bg-slate-100 text-slate-300'
-                  }`}>
-                    {peer.displayName[0]}
-                  </div>
+                <button key={peer.id} onClick={() => setSelectedPeerId(selectedPeerId === peer.id ? null : peer.id)}
+                  className={`w-full text-left p-6 rounded-[2.5rem] border-4 transition-all flex items-center gap-5 bg-white ${selectedPeerId === peer.id ? 'border-amber-400 scale-[1.02] shadow-xl' : 'border-transparent shadow-sm'}`}>
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black ${selectedPeerId === peer.id ? 'bg-amber-400 text-amber-950' : 'bg-slate-100 text-slate-300'}`}>{peer.displayName[0]}</div>
                   <div className="flex-1">
                     <h4 className="font-black text-xl text-slate-900 leading-none">{peer.displayName}</h4>
                     <p className="text-[9px] font-black uppercase text-slate-400 mt-2 tracking-wider">{peer.interests.join(" • ")}</p>
@@ -238,31 +188,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
 
       {selectedPeerId && (
         <div className="fixed bottom-10 left-8 right-8 z-[100] animate-slideIn">
-          <button 
-            onClick={() => { onSendInvite(selectedPeerId, session.interests[0]); setSelectedPeerId(null); }}
-            className="w-full bg-slate-900 text-white font-black py-7 rounded-[2.5rem] text-xl shadow-2xl uppercase tracking-tighter active:scale-95 transition-all flex items-center justify-center gap-3"
-          >
+          <button onClick={() => { onSendInvite(selectedPeerId, session.interests[0]); setSelectedPeerId(null); }}
+            className="w-full bg-slate-900 text-white font-black py-7 rounded-[2.5rem] text-xl shadow-2xl uppercase tracking-tighter flex items-center justify-center gap-3">
             Invite to {session.interests[0]} {ACTIVITY_ICONS[session.interests[0]]}
           </button>
-        </div>
-      )}
-
-      {showSafetyModal && (
-        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-[300] flex items-center justify-center p-8 animate-fadeIn">
-          <div className="bg-white rounded-[3.5rem] p-8 w-full max-w-sm shadow-2xl text-center animate-scaleUp border-t-8 border-amber-400 overflow-y-auto max-h-[90vh] no-scrollbar">
-            <div className="text-6xl mb-6">🛡️</div>
-            <h3 className="text-3xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Safety First</h3>
-            <p className="text-slate-500 mb-8 font-bold text-sm leading-tight italic">Before you meet, please review these tips for a safe and happy neighborhood connection.</p>
-            <div className="text-left space-y-3 mb-10">
-              {SAFETY_TIPS.map((tip, i) => <SafetyCard key={i} tip={tip} />)}
-            </div>
-            <button 
-              onClick={() => setShowSafetyModal(false)} 
-              className="w-full py-6 bg-slate-900 text-white font-black rounded-[2.5rem] text-xl uppercase tracking-tighter shadow-xl active:scale-95 transition-all"
-            >
-              I Understand
-            </button>
-          </div>
         </div>
       )}
     </div>
