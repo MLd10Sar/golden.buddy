@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface WelcomeProps {
@@ -6,39 +7,39 @@ interface WelcomeProps {
 
 export const WelcomeView: React.FC<WelcomeProps> = ({ onNext }) => {
   return (
-    <div className="p-12 flex flex-col items-center text-center animate-pop min-h-full bg-white">
-      <div className="w-36 h-36 bg-indigo-50 rounded-[3.5rem] flex items-center justify-center text-8xl mb-14 shadow-inner border-4 border-white">
-        👵
+    <div className="p-10 flex flex-col items-center text-center animate-pop min-h-full bg-white">
+      <div className="w-32 h-32 bg-indigo-50 rounded-[3rem] flex items-center justify-center text-7xl mb-12 shadow-inner border-4 border-white">
+        👴
       </div>
-      <div className="space-y-4 mb-16">
-        <h2 className="text-6xl font-black text-indigo-900 tracking-tighter leading-[0.85] uppercase">Hello Neighbor</h2>
-        <p className="text-xl text-indigo-300 font-bold leading-tight">A simple way to find activity buddies in your neighborhood.</p>
+      <div className="space-y-3 mb-12">
+        <h2 className="text-5xl font-black text-indigo-900 tracking-tighter leading-[0.9] uppercase">Hello Neighbor</h2>
+        <p className="text-lg text-indigo-300 font-bold leading-tight px-4">Find safe, local activity buddies in your community.</p>
       </div>
       
-      <div className="clay-card p-12 mb-16 w-full text-left">
-        <h3 className="font-black mb-10 text-pink-300 uppercase tracking-[0.4em] text-[10px] text-center">Safety Protocol</h3>
-        <ul className="space-y-12">
-          <li className="flex items-start gap-8">
-            <div className="bg-pink-500 text-white rounded-[1.5rem] w-14 h-14 flex items-center justify-center shrink-0 font-black text-3xl shadow-xl border-4 border-white">1</div>
-            <p className="text-indigo-900 font-black text-2xl leading-tight mt-1">Pick your local neighborhood.</p>
+      <div className="bg-white rounded-[3rem] shadow-xl border border-indigo-50 p-10 mb-12 w-full text-left">
+        <h3 className="font-black mb-8 text-pink-300 uppercase tracking-[0.4em] text-[9px] text-center">Safety Protocol</h3>
+        <ul className="space-y-10">
+          <li className="flex items-start gap-6">
+            <div className="bg-pink-500 text-white rounded-[1.2rem] w-12 h-12 flex items-center justify-center shrink-0 font-black text-2xl shadow-lg border-4 border-white">1</div>
+            <p className="text-indigo-900 font-black text-xl leading-tight mt-1">Select your general neighborhood.</p>
           </li>
-          <li className="flex items-start gap-8">
-            <div className="bg-pink-500 text-white rounded-[1.5rem] w-14 h-14 flex items-center justify-center shrink-0 font-black text-3xl shadow-xl border-4 border-white">2</div>
-            <p className="text-indigo-900 font-black text-2xl leading-tight mt-1">Find a buddy for activities.</p>
+          <li className="flex items-start gap-6">
+            <div className="bg-pink-500 text-white rounded-[1.2rem] w-12 h-12 flex items-center justify-center shrink-0 font-black text-2xl shadow-lg border-4 border-white">2</div>
+            <p className="text-indigo-900 font-black text-xl leading-tight mt-1">Find a buddy for coffee or walks.</p>
           </li>
-          <li className="flex items-start gap-8">
-            <div className="bg-pink-500 text-white rounded-[1.5rem] w-14 h-14 flex items-center justify-center shrink-0 font-black text-3xl shadow-xl border-4 border-white">3</div>
-            <p className="text-indigo-900 font-black text-2xl leading-tight mt-1">Meet safely in public spots.</p>
+          <li className="flex items-start gap-6">
+            <div className="bg-pink-500 text-white rounded-[1.2rem] w-12 h-12 flex items-center justify-center shrink-0 font-black text-2xl shadow-lg border-4 border-white">3</div>
+            <p className="text-indigo-900 font-black text-xl leading-tight mt-1">Meet safely at public spots.</p>
           </li>
         </ul>
       </div>
 
-      <button onClick={onNext} className="w-full bg-pink-500 text-white font-black py-8 rounded-[3rem] text-3xl shadow-[0_25px_50px_-15px_rgba(236,72,153,0.5)] active:scale-95 transition-all uppercase tracking-tighter">
+      <button onClick={onNext} className="w-full bg-pink-500 text-white font-black py-7 rounded-[2.5rem] text-2xl shadow-2xl active:scale-95 transition-all uppercase tracking-tighter">
         Get Started
       </button>
 
-      <p className="mt-14 text-[11px] font-black text-indigo-200 uppercase tracking-[0.5em]">
-        Live Mesh • No Privacy Sharing
+      <p className="mt-12 text-[10px] font-black text-indigo-200 uppercase tracking-[0.4em]">
+        Live Sync • Privacy First
       </p>
     </div>
   );
