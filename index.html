@@ -3,20 +3,36 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>GoldenBuddy AI - Fixed Sync</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>GoldenBuddy - Neighborhood Connect</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: contain; }
-    .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
-    .animate-slideIn { animation: slideIn 0.5s ease-out; }
-    .animate-scaleUp { animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-    @keyframes scaleUp { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-    select { appearance: none; -webkit-appearance: none; }
+    :root {
+      --safe-top: env(safe-area-inset-top);
+      --safe-bottom: env(safe-area-inset-bottom);
+    }
+    body { 
+      font-family: 'Plus Jakarta Sans', sans-serif; 
+      -webkit-tap-highlight-color: transparent; 
+      overscroll-behavior-y: none;
+      background-color: #0f172a;
+    }
+    .safe-top { padding-top: var(--safe-top); }
+    .safe-bottom { padding-bottom: calc(var(--safe-bottom) + 1.5rem); }
+    
+    .animate-spring { animation: spring 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    @keyframes spring {
+      from { transform: scale(0.92); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); }
+    .shadow-clay { shadow: 0 10px 30px -10px rgba(0,0,0,0.1), inset 0 2px 4px rgba(255,255,255,0.8); }
   </style>
   <script>window.process = { env: { API_KEY: "" } };</script>
   <script type="importmap">
@@ -31,7 +47,7 @@
 }
 </script>
 </head>
-<body class="bg-slate-50">
+<body>
   <div id="root"></div>
   <script type="text/babel" data-type="module" data-presets="typescript,react" src="./index.tsx"></script>
 </body>
