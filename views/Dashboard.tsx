@@ -89,7 +89,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
       <div className="p-6 space-y-6 bg-slate-50 min-h-full pb-20 animate-fadeIn">
         <div className="bg-green-600 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
           <div className="relative z-10">
-            <h3 className="text-4xl font-black tracking-tighter mb-1">Meeting {buddy?.displayName || 'a Neighbor'}</h3>
+            <h3 className="text-4xl font-black tracking-tighter mb-1 leading-none">Meeting {buddy?.displayName || 'a Neighbor'}</h3>
             <p className="font-bold opacity-80 mb-6">{activeMatch.activity} Session</p>
             
             <div className="bg-white rounded-[2rem] p-6 shadow-xl text-slate-900 space-y-5">
@@ -106,7 +106,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
                 {spot ? (
                   <div className="space-y-4">
                     <div>
-                      <h4 className="text-2xl font-black tracking-tight">{spot.name}</h4>
+                      <h4 className="text-2xl font-black tracking-tight leading-tight">{spot.name}</h4>
                       <p className="text-xs font-medium text-slate-500 mt-1 leading-snug">{spot.reason}</p>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -120,7 +120,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
                       </div>
                     </div>
                     {spot.mapsUrl && (
-                      <a href={spot.mapsUrl} target="_blank" className="flex items-center justify-center gap-2 w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg">
+                      <a href={spot.mapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all">
                         <span>🗺️</span> Open Google Maps
                       </a>
                     )}
@@ -153,10 +153,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
               <p className="text-amber-600 font-black text-[10px] uppercase tracking-widest">
                 📍 {AREAS.find(a => a.id === session.areaId)?.name || 'Local'}
               </p>
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
             </div>
           </div>
-          <button onClick={onReset} className="text-[10px] font-black text-slate-300 uppercase underline">Reset</button>
+          <button onClick={onReset} className="text-[10px] font-black text-slate-300 hover:text-red-400 uppercase tracking-widest underline transition-colors">Reset</button>
         </div>
 
         {incoming.length > 0 && (
@@ -179,14 +179,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
                     <button 
                       onClick={() => handleAccept(inv.id)} 
                       disabled={!!isProcessing}
-                      className="flex-1 bg-amber-950 text-white py-4 rounded-[1.5rem] font-black uppercase text-xs shadow-md disabled:opacity-50"
+                      className="flex-1 bg-amber-950 text-white py-4 rounded-[1.5rem] font-black uppercase text-xs shadow-md active:scale-95 transition-all disabled:opacity-50"
                     >
                       {isProcessing === inv.id ? 'Accepting...' : 'Accept'}
                     </button>
                     <button 
                       onClick={() => handleReject(inv.id)} 
                       disabled={!!isProcessing}
-                      className="px-6 bg-white/40 text-amber-950 py-4 rounded-[1.5rem] font-black uppercase text-xs disabled:opacity-50"
+                      className="px-6 bg-white/40 text-amber-950 py-4 rounded-[1.5rem] font-black uppercase text-xs active:scale-95 transition-all disabled:opacity-50"
                     >
                       No
                     </button>
@@ -198,10 +198,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
         )}
 
         <div className="space-y-4">
-          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] ml-2">Active Neighbors</h3>
+          <div className="flex justify-between items-center ml-2">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Active Neighbors</h3>
+            <span className="text-[8px] font-black text-green-500 uppercase tracking-widest flex items-center gap-1">
+              <span className="w-1 h-1 bg-green-500 rounded-full animate-ping" />
+              Live
+            </span>
+          </div>
           {remotePeers.length === 0 ? (
-            <div className="py-20 text-center border-4 border-dashed border-slate-200 rounded-[3rem] bg-white/50">
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] px-8">Scanning for buddies nearby...</p>
+            <div className="py-20 text-center border-4 border-dashed border-slate-200 rounded-[3rem] bg-white/50 flex flex-col items-center gap-4">
+              <div className="text-6xl grayscale opacity-20">📻</div>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] px-8 leading-relaxed max-w-[200px]">Scanning for buddies in your neighborhood...</p>
             </div>
           ) : (
             <div className="grid gap-4">
@@ -213,14 +220,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
                     selectedPeerId === peer.id ? 'border-amber-400 scale-[1.02] shadow-xl' : 'border-transparent shadow-sm'
                   }`}
                 >
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black ${
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black shadow-inner ${
                     selectedPeerId === peer.id ? 'bg-amber-400 text-amber-950' : 'bg-slate-100 text-slate-300'
                   }`}>
                     {peer.displayName[0]}
                   </div>
                   <div className="flex-1">
                     <h4 className="font-black text-xl text-slate-900 leading-none">{peer.displayName}</h4>
-                    <p className="text-[9px] font-black uppercase text-slate-400 mt-2">{peer.interests.join(" • ")}</p>
+                    <p className="text-[9px] font-black uppercase text-slate-400 mt-2 tracking-wider">{peer.interests.join(" • ")}</p>
                   </div>
                 </button>
               ))}
@@ -233,7 +240,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
         <div className="fixed bottom-10 left-8 right-8 z-[100] animate-slideIn">
           <button 
             onClick={() => { onSendInvite(selectedPeerId, session.interests[0]); setSelectedPeerId(null); }}
-            className="w-full bg-slate-900 text-white font-black py-7 rounded-[2.5rem] text-xl shadow-2xl uppercase tracking-tighter"
+            className="w-full bg-slate-900 text-white font-black py-7 rounded-[2.5rem] text-xl shadow-2xl uppercase tracking-tighter active:scale-95 transition-all flex items-center justify-center gap-3"
           >
             Invite to {session.interests[0]} {ACTIVITY_ICONS[session.interests[0]]}
           </button>
@@ -241,15 +248,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ session, invites, remotePe
       )}
 
       {showSafetyModal && (
-        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[300] flex items-center justify-center p-8 animate-fadeIn">
-          <div className="bg-white rounded-[3.5rem] p-8 w-full max-w-sm shadow-2xl text-center animate-scaleUp">
+        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-[300] flex items-center justify-center p-8 animate-fadeIn">
+          <div className="bg-white rounded-[3.5rem] p-8 w-full max-w-sm shadow-2xl text-center animate-scaleUp border-t-8 border-amber-400 overflow-y-auto max-h-[90vh] no-scrollbar">
             <div className="text-6xl mb-6">🛡️</div>
             <h3 className="text-3xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Safety First</h3>
-            <p className="text-slate-500 mb-8 font-bold text-sm leading-tight">Review these tips for a happy and safe meeting with your neighbor.</p>
+            <p className="text-slate-500 mb-8 font-bold text-sm leading-tight italic">Before you meet, please review these tips for a safe and happy neighborhood connection.</p>
             <div className="text-left space-y-3 mb-10">
               {SAFETY_TIPS.map((tip, i) => <SafetyCard key={i} tip={tip} />)}
             </div>
-            <button onClick={() => setShowSafetyModal(false)} className="w-full py-6 bg-slate-900 text-white font-black rounded-[2.5rem] text-xl uppercase tracking-tighter">I Understand</button>
+            <button 
+              onClick={() => setShowSafetyModal(false)} 
+              className="w-full py-6 bg-slate-900 text-white font-black rounded-[2.5rem] text-xl uppercase tracking-tighter shadow-xl active:scale-95 transition-all"
+            >
+              I Understand
+            </button>
           </div>
         </div>
       )}
