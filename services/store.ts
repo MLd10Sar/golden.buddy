@@ -17,7 +17,7 @@ const DEFAULT_ACCESSIBILITY: AccessibilitySettings = {
 };
 
 const RELAY_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
-const APP_TOKEN = 'gb_v77_pro_stable';
+const APP_TOKEN = 'gb_live_v100_ultra'; // New token to clear old state
 
 const safeEncode = (obj: any) => {
   try {
@@ -28,7 +28,7 @@ const safeEncode = (obj: any) => {
 const safeDecode = (base64: string) => {
   try {
     if (!base64 || base64 === "null") return null;
-    return JSON.parse(decodeURIComponent(atob(base64)));
+    return JSON.parse(decodeURIComponent(atob(base64.replace(/^"(.*)"$/, '$1'))));
   } catch (e) { return null; }
 };
 
@@ -54,15 +54,16 @@ export function useGoldenBuddyStore() {
   const broadcastPresence = useCallback(async () => {
     if (!state.currentSession) return;
     try {
-      const sessionData = safeEncode({ ...state.currentSession, lastSeenAt: Date.now() });
-      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/s_${state.currentSession.id}/${sessionData}`, { method: 'POST' });
+      const data = safeEncode({ ...state.currentSession, lastSeenAt: Date.now() });
+      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/s_${state.currentSession.id}/${data}`, { method: 'POST' });
       
-      const dirRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/d_${state.currentSession.areaId}`);
-      const dirRaw = await dirRes.text();
-      let directory = JSON.parse(dirRaw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
-      if (!directory.includes(state.currentSession.id)) {
-        directory = [...directory, state.currentSession.id].slice(-25);
-        await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/d_${state.currentSession.areaId}/${encodeURIComponent(JSON.stringify(directory))}`, { method: 'POST' });
+      // Update the area directory every few pulses
+      const res = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/d_${state.currentSession.areaId}`);
+      const raw = await res.text();
+      let dir = JSON.parse(raw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
+      if (!dir.includes(state.currentSession.id)) {
+        dir = [...dir, state.currentSession.id].slice(-20);
+        await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/d_${state.currentSession.areaId}/${encodeURIComponent(JSON.stringify(dir))}`, { method: 'POST' });
       }
     } catch (e) {}
   }, [state.currentSession]);
@@ -71,45 +72,48 @@ export function useGoldenBuddyStore() {
     if (!state.currentSession || isSyncing.current) return;
     isSyncing.current = true;
     try {
-      // 1. Fetch Neighbor IDs
+      // 1. Neighbors
       const dirRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/d_${state.currentSession.areaId}`);
       const dirRaw = await dirRes.text();
       const ids = JSON.parse(dirRaw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
       
-      // 2. Resolve Neighbor Data
       const peerPromises = ids.filter((id: string) => id !== state.currentSession?.id).map(async (id: string) => {
         const res = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/s_${id}`);
         const raw = await res.text();
-        return safeDecode(raw.trim().replace(/^"(.*)"$/, '$1'));
+        return safeDecode(raw.trim());
       });
-      const peers = (await Promise.all(peerPromises)).filter(p => p && (Date.now() - p.lastSeenAt < 45000)) as Session[];
+      const peers = (await Promise.all(peerPromises)).filter(p => p && (Date.now() - p.lastSeenAt < 30000)) as Session[];
       setRemotePeers(peers);
 
-      // 3. Sync Outgoing Invites (Did they accept?)
+      // 2. Outgoing Invites Status (Is my friend responding?)
       const outgoingPending = state.invites.filter(i => i.fromSessionId === state.currentSession?.id && i.status === 'PENDING');
       for (const out of outgoingPending) {
         const res = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/v_${out.id}`);
-        const text = await res.text();
-        const responseData = safeDecode(text.trim().replace(/^"(.*)"$/, '$1'));
+        const raw = await res.text();
+        const responseData = safeDecode(raw.trim());
         if (responseData && responseData.status !== 'PENDING') {
            setState(prev => ({
              ...prev,
-             invites: prev.invites.map(i => i.id === out.id ? { ...i, ...responseData } : i)
+             invites: prev.invites.map(i => i.id === out.id ? { ...i, ...responseData, respondedAt: Date.now() } : i)
            }));
         }
       }
 
-      // 4. Sync Incoming Invites (Inbox)
+      // 3. Incoming Invites (My Inbox)
       const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession.id}`);
       const inboxRaw = await inboxRes.text();
       const incoming = JSON.parse(inboxRaw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
       if (incoming.length > 0) {
         setState(prev => {
-          const updatedInvites = [...prev.invites];
+          const updated = [...prev.invites];
+          let changed = false;
           incoming.forEach(inc => {
-            if (!updatedInvites.some(existing => existing.id === inc.id)) updatedInvites.push(inc);
+            if (!updated.some(ex => ex.id === inc.id)) {
+              updated.push(inc);
+              changed = true;
+            }
           });
-          return { ...prev, invites: updatedInvites };
+          return changed ? { ...prev, invites: updated } : prev;
         });
       }
     } catch (e) {} finally { isSyncing.current = false; }
@@ -117,7 +121,8 @@ export function useGoldenBuddyStore() {
 
   useEffect(() => {
     if (!state.currentSession) return;
-    const interval = setInterval(() => { broadcastPresence(); syncRemoteData(); }, 5000);
+    // HIGH FREQUENCY POLLING FOR REAL-TIME FEEL
+    const interval = setInterval(() => { broadcastPresence(); syncRemoteData(); }, 3000);
     return () => clearInterval(interval);
   }, [state.currentSession, broadcastPresence, syncRemoteData]);
 
@@ -164,15 +169,16 @@ export function useGoldenBuddyStore() {
     if (action === 'ACCEPTED' && state.currentSession) {
       const areaName = state.currentSession.areaId.replace('_', ' ');
       const spot = await getSmartMeetingSpot(areaName, invite.activity);
-      if (spot) spotText = `AI Recommendation: ${spot.name}. ${spot.reason}`;
+      if (spot) spotText = `Meet at: ${spot.name}. Location safe? ${spot.reason}`;
     }
 
     const updated = { ...invite, status: action, coordinationNote: note, aiSuggestedSpot: spotText, respondedAt: Date.now() };
     setState(prev => ({ ...prev, invites: prev.invites.map(inv => inv.id === inviteId ? updated : inv) }));
     
     try {
+      // Notify sender
       await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${safeEncode(updated)}`, { method: 'POST' });
-      // Clear from local inbox immediately after responding
+      // Clear receiver inbox
       const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession?.id}`);
       const inboxRaw = await inboxRes.text();
       let inbox = JSON.parse(inboxRaw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
