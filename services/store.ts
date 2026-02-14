@@ -16,12 +16,15 @@ const DEFAULT_ACCESSIBILITY: AccessibilitySettings = {
   screenReaderOptimized: false,
 };
 
+// RELAY CONFIG: Stable and unique token to ensure clean neighborhood data
 const RELAY_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
-const APP_TOKEN = 'gb_v_realtime_v110_spot_enhanced'; // Refreshed token for clean session logic
+const APP_TOKEN = 'gb_v115_final'; 
 
 const encodeData = (obj: any) => {
   try {
-    return btoa(encodeURIComponent(JSON.stringify(obj)));
+    // We use a cleaner b64 to prevent URL-unfriendly character issues
+    const str = JSON.stringify(obj);
+    return btoa(encodeURIComponent(str)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   } catch (e) {
     return "";
   }
@@ -30,7 +33,7 @@ const encodeData = (obj: any) => {
 const decodeData = (base64: string) => {
   try {
     if (!base64 || base64 === "null") return null;
-    const clean = base64.trim().replace(/^"(.*)"$/, '$1');
+    const clean = base64.trim().replace(/^"(.*)"$/, '$1').replace(/-/g, '+').replace(/_/g, '/');
     return JSON.parse(decodeURIComponent(atob(clean)));
   } catch (e) {
     return null;
@@ -52,6 +55,7 @@ export function useGoldenBuddyStore() {
   });
 
   const [remotePeers, setRemotePeers] = useState<Session[]>([]);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const isSyncing = useRef(false);
 
   useEffect(() => {
@@ -66,28 +70,28 @@ export function useGoldenBuddyStore() {
       const myId = state.currentSession.id;
       const myArea = state.currentSession.areaId;
 
-      // 1. Heartbeat - Broadcast Presence
+      // 1. Presence (Heartbeat)
       const myProfile = encodeData({ ...state.currentSession, lastSeenAt: Date.now() });
       await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/u_${myId}/${myProfile}`, { method: 'POST' });
 
-      // 2. Area Directory - Register in Neighborhood
+      // 2. Directory Management
       const dirRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/d_${myArea}`);
       const dirRaw = await dirRes.text();
       let directory = JSON.parse(dirRaw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
       if (!directory.includes(myId)) {
-        directory = [...directory, myId].slice(-20);
+        directory = [...directory, myId].slice(-15); // Keep list small for stability
         await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/d_${myArea}/${encodeURIComponent(JSON.stringify(directory))}`, { method: 'POST' });
       }
 
-      // 3. Peer Refresh - Get Active Neighbors
+      // 3. Neighbor Refresh
       const peerData = await Promise.all(directory.filter((id: string) => id !== myId).map(async (id: string) => {
         const r = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/u_${id}`);
         const t = await r.text();
         return decodeData(t);
       }));
-      setRemotePeers(peerData.filter(p => p && (Date.now() - p.lastSeenAt < 40000)));
+      setRemotePeers(peerData.filter(p => p && (Date.now() - p.lastSeenAt < 60000)));
 
-      // 4. Inbox Check - Receive New Invites
+      // 4. Inbox Sync
       const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${myId}`);
       const inboxRaw = await inboxRes.text();
       const incoming = JSON.parse(inboxRaw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
@@ -106,27 +110,30 @@ export function useGoldenBuddyStore() {
         });
       }
 
-      // 5. Response Handshake - Check Responses to Sent Invites
+      // 5. Response Handshake
       const pendingOut = state.invites.filter(i => i.fromSessionId === myId && i.status === 'PENDING');
       for (const inv of pendingOut) {
         const vRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/v_${inv.id}`);
         const vText = await vRes.text();
-        const responseInvite = decodeData(vText);
-        if (responseInvite && responseInvite.status !== 'PENDING') {
+        const resp = decodeData(vText);
+        if (resp && resp.status !== 'PENDING') {
           setState(prev => ({
             ...prev,
-            invites: prev.invites.map(i => i.id === inv.id ? responseInvite : i)
+            invites: prev.invites.map(i => i.id === inv.id ? resp : i)
           }));
         }
       }
-    } catch (e) {} finally {
+      setSyncError(null);
+    } catch (e) {
+      setSyncError("Connection low. Retrying...");
+    } finally {
       isSyncing.current = false;
     }
   }, [state.currentSession, state.invites]);
 
   useEffect(() => {
     if (!state.currentSession) return;
-    const interval = setInterval(sync, 2500);
+    const interval = setInterval(sync, 5000); // 5s is a good balance for KV stability
     return () => clearInterval(interval);
   }, [state.currentSession, sync]);
 
@@ -170,18 +177,21 @@ export function useGoldenBuddyStore() {
     const invite = state.invites.find(i => i.id === inviteId);
     if (!invite || !state.currentSession) return;
     
-    let spotInfo = "";
+    let spotData = "";
     if (action === 'ACCEPTED') {
-      const fullAreaName = AREAS.find(a => a.id === state.currentSession?.areaId)?.name || 'local area';
-      const spot = await getSmartMeetingSpot(fullAreaName, invite.activity);
-      // Store complete structured data as JSON for the dashboard to parse
-      spotInfo = JSON.stringify(spot);
+      const area = AREAS.find(a => a.id === state.currentSession?.areaId)?.name || 'local area';
+      try {
+        const spot = await getSmartMeetingSpot(area, invite.activity);
+        spotData = JSON.stringify(spot);
+      } catch (e) {
+        spotData = JSON.stringify({ name: "Local Public Library", reason: "Safe and public.", hours: "Varies", directions: "Meet inside near the main lobby seating." });
+      }
     }
 
     const updated: Invite = { 
       ...invite, 
       status: action, 
-      aiSuggestedSpot: spotInfo,
+      aiSuggestedSpot: spotData,
       respondedAt: Date.now() 
     };
 
@@ -191,8 +201,10 @@ export function useGoldenBuddyStore() {
     }));
 
     try {
+      // 1. Send response to the sender's verification key
       await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${encodeData(updated)}`, { method: 'POST' });
       
+      // 2. Clear from my own inbox
       const res = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession.id}`);
       let inbox = JSON.parse((await res.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
       inbox = inbox.filter(i => i.id !== inviteId);
@@ -234,12 +246,13 @@ export function useGoldenBuddyStore() {
   };
 
   return {
-    state, remotePeers,
+    state, remotePeers, syncError,
     setView: (v: View) => setState(prev => ({ ...prev, currentView: v })),
     createSession, sendInvite, respondToInvite,
     updateInviteNote,
     resetApp: () => { localStorage.clear(); window.location.reload(); },
     updateAccessibility,
     updateInviteDuration,
+    retrySync: sync
   };
 }
