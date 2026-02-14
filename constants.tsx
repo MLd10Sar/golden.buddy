@@ -16,9 +16,9 @@ export const INTERESTS: Interest[] = [
   'Gardening',
 ];
 
-export const INVITE_DURATION_MS = 60 * 60 * 1000; // 1 hour
+export const INVITE_DURATION_MS = 60 * 60 * 1000; 
 
-export const STORAGE_KEY = 'goldenbuddy_v2_state';
+// CHANGED KEY TO FORCE REFRESH
+export const STORAGE_KEY = 'gb_v6_storage_final';
 
-// Mock peers removed for pure natural testing
 export const MOCK_PEERS: any[] = [];
