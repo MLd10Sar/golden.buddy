@@ -49,15 +49,19 @@
     }
   </style>
 
-  <!-- Import Map for ESM Dependencies -->
+  <script>
+    // Polyfill process for Gemini SDK in browser
+    window.process = { env: { API_KEY: "" } };
+  </script>
+
   <script type="importmap">
 {
   "imports": {
+    "react": "https://esm.sh/react@19.0.0",
     "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
     "@google/genai": "https://esm.sh/@google/genai@1.41.0",
-    "react": "https://esm.sh/react@19.0.0",
-    "react/": "https://esm.sh/react@19.0.0/",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/"
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/"
   }
 }
 </script>
@@ -66,13 +70,11 @@
   <div id="root"></div>
   
   <!-- 
-    Note: type="text/babel" tells the Babel script above to transpile this file.
-    data-type="module" ensures it is treated as an ES Module.
-    data-presets="typescript,react" enables support for TSX.
+    Removing data-type="module" is CRITICAL for GitHub Pages.
+    This allows Babel to run the script without the browser checking MIME types of imported files.
   -->
   <script 
     type="text/babel" 
-    data-type="module" 
     data-presets="typescript,react" 
     src="./index.tsx">
   </script>
