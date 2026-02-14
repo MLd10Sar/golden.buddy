@@ -1,97 +1,71 @@
-
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import { Session, Interest } from "../types";
 
-/**
- * Safely access the API Key. 
- * On static hosts like GitHub Pages, process.env is usually undefined.
- */
 function getApiKey(): string | null {
   try {
-    // Check if process exists and has an env property
-    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-      return process.env.API_KEY;
-    }
-  } catch (e) {
-    // Fallback for strict environments
-  }
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) return process.env.API_KEY;
+  } catch (e) {}
   return null;
 }
 
-/**
- * Helper to initialize the AI client only when needed.
- */
 function getAIClient() {
   const apiKey = getApiKey();
-  if (!apiKey) {
-    console.warn("Gemini API Key is not configured. AI features will be unavailable.");
-    return null;
-  }
+  if (!apiKey) return null;
   return new GoogleGenAI({ apiKey });
 }
 
-/**
- * Generates an AI-powered insight on why two buddies are a good match.
- */
-export async function getBuddyInsight(user: Session, buddy: any) {
-  const ai = getAIClient();
-  if (!ai) return null;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `User: ${user.displayName}, interests: ${user.interests.join(", ")}. 
-                Buddy: ${buddy.displayName}, interests: ${buddy.interests.join(", ")}.
-                Explain in 1-2 friendly sentences why they should meet. 
-                Keep it very warm, simple, and encouraging for a senior. 
-                Also suggest 1 specific icebreaker question.`,
-      config: {
-        systemInstruction: "You are a warm social facilitator for seniors. Your goal is to foster community and reduce loneliness by highlighting shared interests.",
-      }
-    });
-    
-    const text = response.text || "";
-    const parts = text.split(/\?|\./);
-    const insight = parts[0] || text;
-    const icebreaker = parts[1]?.trim() || "How long have you lived in the neighborhood?";
-
-    return {
-      insight: insight,
-      icebreaker: icebreaker
-    };
-  } catch (error) {
-    console.error("Gemini Insight Error:", error);
-    return null;
+// Guideline helper for base64 decoding
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
   }
+  return bytes;
+}
+
+// Guideline helper for raw PCM audio decoding
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
 }
 
 /**
- * Uses Google Search/Maps grounding to find a safe public meeting spot.
+ * Uses Google Search grounding to find a safe public meeting spot AND checks local weather.
  */
 export async function getSmartMeetingSpot(areaName: string, activity: Interest) {
   const ai = getAIClient();
   if (!ai) return null;
 
   try {
-    const prompt = `Find one specific, very safe, and popular public meeting spot in ${areaName} for two seniors to meet for ${activity}. 
-                    Provide exactly these 5 fields with these exact labels:
-                    NAME: (The name of the place)
-                    REASON: (1 sentence why it is safe and good for seniors - e.g. lighting, seating)
-                    HOURS: (Typical opening hours)
-                    MAPS: (A direct Google Maps URL if available)
-                    DIRECTIONS: (1 simple arrival tip for seniors - e.g. 'Meet near the main entrance benches')`;
+    const prompt = `Suggest a specific, senior-safe public meeting spot in ${areaName} for ${activity}. 
+                    Also check the current typical weather for ${areaName} and provide a safety tip.
+                    Labels needed: 
+                    NAME, REASON, HOURS, DIRECTIONS, WEATHER_TIP.`;
     
+    // Using gemini-3-pro-preview for complex reasoning and search grounding
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }]
-      }
+      config: { tools: [{ googleSearch: {} }] }
     });
 
     const text = response.text || "";
-    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => chunk.web?.uri).filter(Boolean) || [];
-
     const extract = (label: string) => {
       const regex = new RegExp(`${label}:\\s*(.*)`, 'i');
       const match = text.match(regex);
@@ -99,46 +73,49 @@ export async function getSmartMeetingSpot(areaName: string, activity: Interest) 
     };
 
     return {
-      name: extract('NAME') || "Local Community Hub",
-      reason: extract('REASON') || "A safe and central place to meet.",
-      hours: extract('HOURS') || "Generally open during daylight hours.",
-      mapsUrl: extract('MAPS') || "https://maps.google.com",
-      directions: extract('DIRECTIONS') || "Meet at the main entrance.",
-      sources: sources.slice(0, 2)
+      name: extract('NAME') || "Local Public Library",
+      reason: extract('REASON') || "Safe, public, and has plenty of seating.",
+      hours: extract('HOURS') || "Generally open 9 AM - 6 PM.",
+      directions: extract('DIRECTIONS') || "Meet by the front main doors.",
+      weatherTip: extract('WEATHER_TIP') || "Check the window before you go!",
+      mapsUrl: `https://www.google.com/maps/search/${encodeURIComponent(extract('NAME') + " " + areaName)}`
     };
   } catch (error) {
-    console.error("Gemini Spot Error:", error);
-    return { 
-      name: "The Local Library", 
-      reason: "Safe, quiet, and plenty of seating.", 
-      hours: "Varies - Check local listings", 
-      mapsUrl: "https://maps.google.com",
-      directions: "Meet by the front reception desk inside.",
-      sources: [] 
-    };
+    return { name: "Local Library", reason: "Safe and public.", hours: "Daylight", directions: "Meet in lobby.", weatherTip: "Stay safe!", mapsUrl: "https://maps.google.com" };
   }
 }
 
 /**
- * Polishes a coordination note or suggests one if none exists.
+ * Reads text aloud for seniors using Gemini TTS.
  */
-export async function polishCoordinationNote(note: string, activity?: Interest, areaName?: string) {
+export async function speakText(text: string) {
   const ai = getAIClient();
-  if (!ai) return note;
+  if (!ai) return;
 
   try {
-    const isSuggestion = !note.trim();
-    const prompt = isSuggestion
-      ? `You are an AI for a senior social app. Suggest one short, warm coordination note for meeting a buddy for ${activity || 'an activity'} in ${areaName || 'the neighborhood'}. Return ONLY the text.`
-      : `You are an AI for a senior social app. Polish this coordination note for clarity: "${note}". Return ONLY the polished text.`;
-
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: `Say warmly: ${text}` }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+        },
+      },
     });
-    return response.text?.trim() || note;
-  } catch (error) {
-    console.error("Polish Error:", error);
-    return note;
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64Audio) {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      // Following recommended audio decoding practices for raw PCM
+      const audioBuffer = await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
+      
+      const source = audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioCtx.destination);
+      source.start();
+    }
+  } catch (e) {
+    console.error("TTS Error:", e);
   }
 }
