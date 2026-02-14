@@ -42,6 +42,7 @@ export interface Invite {
   respondedAt?: number;
   coordinationNote?: string;
   aiSuggestedSpot?: string;
+  acceptedBy?: string[]; 
 }
 
 export type View = 'WELCOME' | 'NAME' | 'LOCATION' | 'INTERESTS' | 'DASHBOARD' | 'PROFILE';
