@@ -5,7 +5,7 @@ import { GoogleGenAI, Modality } from "@google/genai";
 
 // --- CONFIGURATION ---
 const RELAY_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
-const APP_TOKEN = 'gb_v40_armored_sync'; // New clean token
+const APP_TOKEN = 'gb_v50_ultra_safe'; // Fresh token for maximum reliability
 const AREAS = ['Arlington, VA', 'Alexandria, VA', 'Richmond, VA', 'Fairfax, VA', 'Washington, DC', 'New York, NY', 'Miami, FL'];
 const INTERESTS = ['Walking', 'Chess', 'Coffee', 'Gardening', 'Bird Watching'];
 
@@ -18,17 +18,25 @@ interface Neighbor {
   lastSeen: number;
 }
 
-// --- UTILS: SAFE BASE64 TRANSPORT ---
-// Prevents the server from blocking requests containing JSON characters
+// --- UTILS: ARMORED DATA TRANSPORT ---
 const safeEncode = (obj: any) => {
-  const str = JSON.stringify(obj);
-  return btoa(unescape(encodeURIComponent(str)));
+  try {
+    const str = JSON.stringify(obj);
+    // Robust UTF-8 to Base64 conversion
+    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_, p1) => 
+      String.fromCharCode(parseInt(p1, 16))
+    ));
+  } catch (e) {
+    return "";
+  }
 };
 
 const safeDecode = (base64: string) => {
   try {
     if (!base64 || base64 === "null") return null;
-    const str = decodeURIComponent(escape(atob(base64)));
+    const str = decodeURIComponent(Array.prototype.map.call(atob(base64), (c) => 
+      '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+    ).join(''));
     return JSON.parse(str);
   } catch (e) {
     return null;
@@ -43,7 +51,7 @@ const speak = async (text: string) => {
     const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Speak warmly: ${text}` }] }],
+      contents: [{ parts: [{ text: `Speak warmly and slowly: ${text}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
@@ -79,26 +87,26 @@ const App = () => {
   const [smartSpot, setSmartSpot] = useState('');
 
   const userId = useMemo(() => Math.random().toString(36).substring(2, 9), []);
-  const syncInProgress = useRef(false);
+  const isSyncing = useRef(false);
 
-  // --- ARMORED SYNC ENGINE ---
+  // --- RECOVERY & SYNC ENGINE ---
   const performSync = useCallback(async () => {
-    if (view !== 'DASHBOARD' || syncInProgress.current) return;
-    syncInProgress.current = true;
+    if (view !== 'DASHBOARD' || isSyncing.current) return;
+    isSyncing.current = true;
     setSyncStatus('syncing');
 
     try {
       const safeArea = area.replace(/[^a-zA-Z]/g, '').toLowerCase();
-      const dirKey = `d_${safeArea}`;
-      const myKey = `u_${userId}`;
+      const dirKey = `dir_v2_${safeArea}`;
+      const myKey = `usr_v2_${userId}`;
 
-      // 1. UPDATE MY FLARE (Encoded)
+      // 1. UPDATE MY PROFILE (Using POST to avoid 405)
       const myData = { id: userId, name, interests: selectedInterests, lastSeen: Date.now() };
-      const updateUrl = `${RELAY_BASE}/UpdateValue/${APP_TOKEN}/${myKey}/${safeEncode(myData)}`;
-      const updateRes = await fetch(updateUrl); // Immanuel KeyVal often works best with simple GET for updates
-      if (!updateRes.ok) throw new Error(`Update Failed: ${updateRes.status}`);
+      const encoded = safeEncode(myData);
+      const updateRes = await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/${myKey}/${encoded}`, { method: 'POST' });
+      if (!updateRes.ok) throw new Error(`Write Failed: ${updateRes.status}`);
 
-      // 2. REFRESH AREA DIRECTORY
+      // 2. REGISTER IN DIRECTORY
       const dirRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/${dirKey}`);
       const dirRaw = await dirRes.text();
       let directory: string[] = [];
@@ -108,15 +116,15 @@ const App = () => {
       } catch (e) { directory = []; }
 
       if (!directory.includes(userId)) {
-        directory = [...directory, userId].slice(-20);
-        await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/${dirKey}/${encodeURIComponent(JSON.stringify(directory))}`);
+        const updatedDir = [...directory, userId].slice(-30);
+        await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/${dirKey}/${encodeURIComponent(JSON.stringify(updatedDir))}`, { method: 'POST' });
       }
 
-      // 3. FETCH OTHERS
+      // 3. FETCH NEIGHBORS
       const neighborProfiles = await Promise.all(
         directory.filter(id => id !== userId).map(async (id) => {
           try {
-            const res = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/u_${id}`);
+            const res = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/usr_v2_${id}`);
             const text = await res.text();
             const cleaned = text.trim().replace(/^"(.*)"$/, '$1');
             return safeDecode(cleaned);
@@ -124,41 +132,44 @@ const App = () => {
         })
       );
 
-      const active = neighborProfiles.filter(p => p && (Date.now() - p.lastSeen < 60000)) as Neighbor[];
+      // Filter for active users (last 90 seconds)
+      const now = Date.now();
+      const active = neighborProfiles.filter(p => p && (now - p.lastSeen < 90000)) as Neighbor[];
+      
       setNeighbors(active);
       setSyncStatus('ok');
       setLastError(null);
-      setLastSync(Date.now());
+      setLastSync(now);
     } catch (err: any) {
-      console.error("Sync Critical Error:", err);
+      console.error("Sync Error:", err);
       setSyncStatus('error');
       setLastError(err.message || "Network Error");
     } finally {
-      syncInProgress.current = false;
+      isSyncing.current = false;
     }
   }, [view, area, name, selectedInterests, userId]);
 
   useEffect(() => {
     if (view === 'DASHBOARD') {
       performSync();
-      const interval = setInterval(performSync, 8000); // 8s interval to prevent rate-limiting
+      const interval = setInterval(performSync, 6000); 
       return () => clearInterval(interval);
     }
   }, [view, performSync]);
 
   const findSafeSpot = async () => {
-    setSmartSpot("Searching Google...");
+    setSmartSpot("Searching Google for safe spots...");
     try {
       const ai = getAI();
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Find 1 safe, senior-friendly public meeting spot in ${area} for ${selectedInterests[0]}. Provide name and 1 sentence reason.`,
+        contents: `Find 1 safe, senior-friendly public meeting spot in ${area} for ${selectedInterests[0]}. Provide the name and why it is safe.`,
         config: { tools: [{ googleSearch: {} }] }
       });
       setSmartSpot(response.text);
-      speak(`I found a place: ${response.text}`);
+      speak(`I recommend: ${response.text}`);
     } catch (e) {
-      setSmartSpot("The nearest public library or community center.");
+      setSmartSpot("The nearest public library or senior community center.");
     }
   };
 
@@ -168,15 +179,15 @@ const App = () => {
       <div className="text-9xl animate-bounce">👋</div>
       <div className="space-y-4">
         <h1 className="text-6xl font-black text-amber-900 tracking-tighter uppercase leading-none">GoldenBuddy</h1>
-        <p className="text-xl text-amber-800/60 font-bold uppercase tracking-widest">Safe Neighbor Connect</p>
+        <p className="text-xl text-amber-800/60 font-bold uppercase tracking-widest">Neighbor Connect</p>
       </div>
-      <button onClick={() => setView('NAME')} className="w-full bg-amber-500 text-amber-950 font-black py-8 rounded-[3rem] text-3xl shadow-2xl active:scale-95 transition-all uppercase">Start</button>
+      <button onClick={() => setView('NAME')} className="w-full bg-amber-500 text-amber-950 font-black py-8 rounded-[3rem] text-3xl shadow-2xl active:scale-95 transition-all uppercase">Get Started</button>
     </div>
   );
 
   if (view === 'NAME') return (
     <div className="p-8 flex flex-col justify-center min-h-screen space-y-10 animate-slideIn bg-white">
-      <h2 className="text-5xl font-black text-slate-900">Your name?</h2>
+      <h2 className="text-5xl font-black text-slate-900 leading-tight">What is your name?</h2>
       <input autoFocus value={name} onChange={e => setName(e.target.value)} className="w-full p-8 text-4xl border-b-8 border-amber-400 bg-transparent outline-none focus:border-amber-600 transition-colors" placeholder="Martha" />
       <button onClick={() => setView('LOCATION')} disabled={!name} className="w-full bg-amber-500 text-amber-950 font-black py-6 rounded-[2rem] text-2xl shadow-xl disabled:bg-slate-200 uppercase">Next</button>
     </div>
@@ -196,12 +207,12 @@ const App = () => {
           ))}
         </div>
       </div>
-      <button onClick={() => setView('DASHBOARD')} disabled={selectedInterests.length === 0} className="w-full bg-amber-500 text-amber-950 font-black py-6 rounded-[3rem] text-2xl shadow-2xl disabled:bg-slate-200 uppercase">Discover Neighbors</button>
+      <button onClick={() => setView('DASHBOARD')} disabled={selectedInterests.length === 0} className="w-full bg-amber-500 text-amber-950 font-black py-6 rounded-[3rem] text-2xl shadow-2xl disabled:bg-slate-200 uppercase">Find Buddies</button>
     </div>
   );
 
   return (
-    <div className="min-h-screen max-w-md mx-auto bg-slate-50 flex flex-col">
+    <div className="min-h-screen max-w-md mx-auto bg-slate-50 flex flex-col selection:bg-amber-200">
       <header className="p-5 bg-amber-400 flex justify-between items-center shadow-lg sticky top-0 z-[100]">
         <h1 className="font-black text-2xl text-amber-950 uppercase tracking-tighter">GoldenBuddy</h1>
         <div className="flex items-center gap-2">
@@ -212,10 +223,10 @@ const App = () => {
 
       <main className="p-6 space-y-8 pb-40 flex-1 overflow-y-auto">
         {syncStatus === 'error' && (
-          <div className="bg-red-50 border-2 border-red-200 p-4 rounded-3xl animate-fadeIn">
-            <p className="text-red-700 font-black text-center text-sm uppercase">Connection Lost</p>
-            <p className="text-red-500 text-[10px] text-center font-bold mt-1 opacity-60 uppercase tracking-tighter">Debug: {lastError}</p>
-            <button onClick={() => performSync()} className="w-full mt-3 bg-red-600 text-white font-black py-3 rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-transform">Retry Now</button>
+          <div className="bg-red-50 border-2 border-red-200 p-5 rounded-[2rem] animate-fadeIn shadow-lg">
+            <p className="text-red-700 font-black text-center text-sm uppercase mb-1">Connection Lost</p>
+            <p className="text-red-500 text-[9px] text-center font-bold opacity-60 uppercase tracking-widest mb-3">Debug: {lastError}</p>
+            <button onClick={() => performSync()} className="w-full bg-red-600 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all shadow-md">Try Reconnect</button>
           </div>
         )}
 
@@ -227,7 +238,7 @@ const App = () => {
         {neighbors.length === 0 ? (
           <div className="py-24 text-center border-4 border-dashed border-slate-200 rounded-[3rem] opacity-40">
             <div className="text-7xl animate-pulse">📡</div>
-            <p className="font-black text-slate-400 uppercase text-xs tracking-widest mt-4 leading-relaxed px-10">Scanning for buddies nearby...</p>
+            <p className="font-black text-slate-400 uppercase text-xs tracking-widest mt-4 leading-relaxed px-10">Searching for other active buddies...</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -243,28 +254,28 @@ const App = () => {
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{n.interests.join(" • ")}</p>
                     </div>
                   </div>
-                  <button onClick={() => speak(`Hello ${n.name}! How are you today?`)} className="bg-amber-100 p-4 rounded-full text-2xl active:scale-90 transition-transform">🔊</button>
+                  <button onClick={() => speak(`Hello ${n.name}! Would you like to meet up for ${n.interests[0]}?`)} className="bg-amber-100 p-4 rounded-full text-2xl active:scale-90 transition-transform shadow-sm">🔊</button>
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        <div className="bg-indigo-600 p-8 rounded-[3.5rem] text-white space-y-6 shadow-2xl relative overflow-hidden group">
+        <div className="bg-indigo-600 p-8 rounded-[3.5rem] text-white shadow-2xl relative overflow-hidden group">
           <div className="relative z-10">
-            <h3 className="font-black text-xl uppercase tracking-widest text-indigo-200">Safety Guide</h3>
-            <p className="text-lg font-medium opacity-90 leading-relaxed mt-2 italic">{smartSpot || "I'll recommend a safe, real-world public place for you to meet."}</p>
+            <h3 className="font-black text-xl uppercase tracking-widest text-indigo-200">AI Safety Assistant</h3>
+            <p className="text-lg font-medium opacity-90 leading-relaxed mt-2 italic">{smartSpot || "I'll help you find a safe, real-world public place to meet."}</p>
           </div>
-          <button onClick={findSafeSpot} className="w-full py-6 bg-white text-indigo-700 font-black rounded-3xl uppercase text-xl shadow-lg relative z-10 active:scale-95 transition-transform">Suggest Safe Spot</button>
+          <button onClick={findSafeSpot} className="w-full mt-6 py-6 bg-white text-indigo-700 font-black rounded-3xl uppercase text-xl shadow-lg relative z-10 active:scale-95 transition-transform">Suggest Meeting Spot</button>
           <div className="absolute -right-10 -bottom-10 text-[12rem] opacity-5 pointer-events-none group-hover:rotate-12 transition-transform">📍</div>
         </div>
       </main>
 
       <footer className="fixed bottom-0 left-0 right-0 p-6 bg-white/95 backdrop-blur-md border-t border-slate-100 flex flex-col items-center">
         <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">
-          Sync: {syncStatus.toUpperCase()} • {lastSync ? new Date(lastSync).toLocaleTimeString() : 'INIT'}
+          Live Sync: {syncStatus.toUpperCase()} • {lastSync ? new Date(lastSync).toLocaleTimeString() : 'WAITING'}
         </p>
-        <button onClick={() => window.location.reload()} className="mt-2 text-[10px] font-black text-slate-200 uppercase tracking-[0.2em]">Reset App</button>
+        <button onClick={() => window.location.reload()} className="mt-2 text-[10px] font-black text-slate-200 uppercase tracking-[0.2em] border-b border-slate-100">Sign Out & Reset</button>
       </footer>
     </div>
   );
