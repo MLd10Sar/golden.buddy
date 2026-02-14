@@ -1,8 +1,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AppState, Session, Invite, View, AreaId, Interest, AccessibilitySettings } from '../types';
+import { AppState, Session, Invite, View, AreaId, Interest, AccessibilitySettings, InviteStatus } from '../types';
 import { STORAGE_KEY, INVITE_DURATION_MS } from '../constants';
-import { getSmartMeetingSpot } from './geminiService';
 
 const initialState: AppState = {
   currentSession: null,
@@ -16,112 +15,117 @@ const DEFAULT_ACCESSIBILITY: AccessibilitySettings = {
   screenReaderOptimized: false,
 };
 
+// Anonymous Relay API
 const RELAY_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
-const APP_TOKEN = 'gb_v8_final_sync'; // NEW TOKEN TO ENSURE CLEAN STATE
-
-const encode = (obj: any) => {
-  try { return btoa(encodeURIComponent(JSON.stringify(obj))); } 
-  catch (e) { return ""; }
-};
-
-const decode = (base64: string) => {
-  try {
-    if (!base64 || base64 === "null" || base64.length < 5) return null;
-    const clean = base64.trim().replace(/^"(.*)"$/, '$1');
-    return JSON.parse(decodeURIComponent(atob(clean)));
-  } catch (e) { return null; }
-};
+const APP_TOKEN = 'gb_v52_ultra_fast'; // Incremented token for fresh sync state
 
 export function useGoldenBuddyStore() {
   const [state, setState] = useState<AppState>(() => {
-    // Purge old storage to force new sync protocol
-    localStorage.removeItem('goldenbuddy_v2_state');
-    localStorage.removeItem('gb_v_ultra_final_key');
-    
-    const saved = localStorage.getItem('gb_v8_storage');
+    const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        return { ...initialState, ...parsed, currentView: 'WELCOME' };
-      } catch (e) { return initialState; }
+        const parsed = JSON.parse(saved) as Partial<AppState>;
+        return { ...initialState, ...parsed, currentView: 'WELCOME' } as AppState;
+      } catch (e) {
+        return initialState;
+      }
     }
     return initialState;
   });
 
   const [remotePeers, setRemotePeers] = useState<Session[]>([]);
-  const syncBusy = useRef(false);
+  const isSyncing = useRef(false);
 
   useEffect(() => {
-    localStorage.setItem('gb_v8_storage', JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
-  const sync = useCallback(async () => {
-    if (!state.currentSession || syncBusy.current) return;
-    syncBusy.current = true;
+  const broadcastPresence = useCallback(async () => {
+    if (!state.currentSession) return;
     try {
-      // 1. Update My Presence
-      const me = encode({ ...state.currentSession, lastSeenAt: Date.now() });
-      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/u_${state.currentSession.id}/${me}`, { method: 'POST' });
+      const sessionWithTime = { ...state.currentSession, lastSeenAt: Date.now() };
+      const sessionJson = JSON.stringify(sessionWithTime);
       
-      // 2. Refresh Directory for this Area
-      const dirRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/dir_${state.currentSession.areaId}`);
-      let dir = JSON.parse((await dirRes.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
-      if (!dir.includes(state.currentSession.id)) {
-        dir = [...dir, state.currentSession.id].slice(-10);
-        await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/dir_${state.currentSession.areaId}/${encodeURIComponent(JSON.stringify(dir))}`, { method: 'POST' });
+      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/s_${state.currentSession.id}/${encodeURIComponent(sessionJson)}`, { method: 'POST' });
+      
+      const dirRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/d_${state.currentSession.areaId}`);
+      const dirRaw = await dirRes.text();
+      let directory = dirRaw && dirRaw !== "null" ? JSON.parse(dirRaw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"')) : [];
+      if (!Array.isArray(directory)) directory = [];
+      
+      if (!directory.includes(state.currentSession.id)) {
+        directory = [...directory, state.currentSession.id].slice(-30);
+        await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/d_${state.currentSession.areaId}/${encodeURIComponent(JSON.stringify(directory))}`, { method: 'POST' });
       }
+    } catch (e) {}
+  }, [state.currentSession]);
 
-      // 3. Get Peer Sessions
-      const peerData = await Promise.all(dir.filter((id: string) => id !== state.currentSession?.id).map(async (id: string) => {
-        const r = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/u_${id}`);
-        return decode(await r.text());
-      }));
-      setRemotePeers(peerData.filter(p => p && (Date.now() - p.lastSeenAt < 30000)));
+  const syncRemoteData = useCallback(async () => {
+    if (!state.currentSession || isSyncing.current) return;
+    isSyncing.current = true;
+    try {
+      const dirRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/d_${state.currentSession.areaId}`);
+      const dirText = await dirRes.text();
+      const cleanedDir = dirText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"');
+      const ids = JSON.parse(cleanedDir && cleanedDir !== "null" ? cleanedDir : "[]");
+      
+      const peerPromises = ids.filter((id: string) => id !== state.currentSession?.id).map(async (id: string) => {
+        const res = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/s_${id}`);
+        const raw = await res.text();
+        const cleanedRaw = raw.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"');
+        return cleanedRaw && cleanedRaw !== "null" ? JSON.parse(cleanedRaw) : null;
+      });
+      
+      const peers = (await Promise.all(peerPromises)).filter(p => p && (Date.now() - p.lastSeenAt < 45000)) as Session[];
+      setRemotePeers(peers);
 
-      // 4. Check Inbox (Incoming Requests)
-      const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/in_${state.currentSession.id}`);
-      const incoming = JSON.parse((await inboxRes.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
+      const inviteInboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession.id}`);
+      const inviteInboxText = await inviteInboxRes.text();
+      const cleanedInbox = inviteInboxText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"');
+      const incoming = JSON.parse(cleanedInbox && cleanedInbox !== "null" ? cleanedInbox : "[]") as Invite[];
+      
       if (incoming.length > 0) {
         setState(prev => {
-          const freshInvites = [...prev.invites];
-          let updated = false;
+          const newInvites = [...prev.invites];
+          let changed = false;
           incoming.forEach(inc => {
-            if (!freshInvites.some(fi => fi.id === inc.id)) {
-              freshInvites.push(inc);
-              updated = true;
+            if (!newInvites.some(existing => existing.id === inc.id)) {
+              newInvites.push(inc);
+              changed = true;
             }
           });
-          return updated ? { ...prev, invites: freshInvites } : prev;
+          return changed ? { ...prev, invites: newInvites } : prev;
         });
       }
 
-      // 5. Watch Outgoing Invites for Responses
-      const pendingOut = state.invites.filter(i => i.fromSessionId === state.currentSession?.id && i.status === 'PENDING');
-      for (const inv of pendingOut) {
-        const vRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/v_${inv.id}`);
-        const vData = decode(await vRes.text());
-        if (vData && vData.status !== 'PENDING') {
+      const outgoingPending = state.invites.filter(i => i.fromSessionId === state.currentSession?.id && i.status === 'PENDING');
+      for (const out of outgoingPending) {
+        const statusRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/v_${out.id}`);
+        const statusRaw = (await statusRes.text() || "").replace(/"/g, '').trim();
+        if (statusRaw === 'ACCEPTED' || statusRaw === 'DECLINED') {
           setState(prev => ({
             ...prev,
-            invites: prev.invites.map(i => i.id === inv.id ? vData : i)
+            invites: prev.invites.map(i => i.id === out.id ? { ...i, status: statusRaw as InviteStatus, respondedAt: Date.now() } : i)
           }));
         }
       }
-    } catch (e) {
-      console.error("Sync Error:", e);
-    } finally {
-      syncBusy.current = false;
-    }
+
+    } catch (e) {} finally { isSyncing.current = false; }
   }, [state.currentSession, state.invites]);
 
   useEffect(() => {
     if (!state.currentSession) return;
-    const interval = setInterval(sync, 2000); // 2 second sync interval
-    return () => clearInterval(interval);
-  }, [state.currentSession, sync]);
+    broadcastPresence();
+    const pInt = setInterval(broadcastPresence, 3000); // 3s presence heartbeat
+    const sInt = setInterval(syncRemoteData, 3000); // 3s sync for responsiveness
+    return () => { 
+      clearInterval(pInt); 
+      clearInterval(sInt); 
+    };
+  }, [state.currentSession, broadcastPresence, syncRemoteData]);
 
   const createSession = (name: string, areaId: AreaId, interests: Interest[]) => {
-    const s: Session = {
+    const newSession: Session = {
       id: Math.random().toString(36).substr(2, 6),
       displayName: name,
       areaId,
@@ -131,57 +135,105 @@ export function useGoldenBuddyStore() {
       accessibility: DEFAULT_ACCESSIBILITY,
       inviteDuration: INVITE_DURATION_MS,
     };
-    setState(prev => ({ ...prev, currentSession: s, currentView: 'DASHBOARD' }));
+    setState(prev => ({ ...prev, currentSession: newSession, currentView: 'DASHBOARD' }));
+  };
+
+  const updateAccessibility = (settings: Partial<AccessibilitySettings>) => {
+    setState(prev => {
+      if (!prev.currentSession) return prev;
+      return {
+        ...prev,
+        currentSession: {
+          ...prev.currentSession,
+          accessibility: { ...prev.currentSession.accessibility, ...settings }
+        }
+      };
+    });
+  };
+
+  const updateInviteDuration = (durationMs: number) => {
+    setState(prev => {
+      if (!prev.currentSession) return prev;
+      return {
+        ...prev,
+        currentSession: {
+          ...prev.currentSession,
+          inviteDuration: durationMs
+        }
+      };
+    });
   };
 
   const sendInvite = async (toId: string, activity: Interest) => {
     if (!state.currentSession) return;
-    const invite: Invite = {
+    const duration = state.currentSession.inviteDuration || INVITE_DURATION_MS;
+    const newInvite: Invite = {
       id: Math.random().toString(36).substr(2, 6),
       fromSessionId: state.currentSession.id,
       toSessionId: toId,
       activity,
       status: 'PENDING',
       createdAt: Date.now(),
-      expiresAt: Date.now() + INVITE_DURATION_MS,
+      expiresAt: Date.now() + duration,
     };
-    setState(prev => ({ ...prev, invites: [...prev.invites, invite] }));
-    try {
-      const res = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/in_${toId}`);
-      let inbox = JSON.parse((await res.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
-      inbox = [...inbox, invite].slice(-3);
-      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/in_${toId}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
-    } catch (e) {}
-  };
-
-  const respondToInvite = async (inviteId: string, action: 'ACCEPTED' | 'DECLINED') => {
-    const invite = state.invites.find(i => i.id === inviteId);
-    if (!invite || !state.currentSession) return;
     
-    let spotInfo = "";
-    if (action === 'ACCEPTED') {
-      const spot = await getSmartMeetingSpot(state.currentSession.areaId.replace('_', ' '), invite.activity);
-      spotInfo = `Safe Spot: ${spot.name}. Reason: ${spot.reason}`;
-    }
-
-    const updated = { ...invite, status: action, aiSuggestedSpot: spotInfo, respondedAt: Date.now() };
-    setState(prev => ({ ...prev, invites: prev.invites.map(i => i.id === inviteId ? updated : i) }));
+    setState(prev => ({ ...prev, invites: [...prev.invites, newInvite] }));
 
     try {
-      // 1. Inform the sender via Vote key
-      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${encode(updated)}`, { method: 'POST' });
-      // 2. Remove from my own inbox
-      const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/in_${state.currentSession.id}`);
-      let inbox = JSON.parse((await inboxRes.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
-      inbox = inbox.filter(i => i.id !== inviteId);
-      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/in_${state.currentSession.id}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
+      const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${toId}`);
+      const inboxText = await inboxRes.text();
+      const cleanedInbox = inboxText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"');
+      let inbox = JSON.parse(cleanedInbox && cleanedInbox !== "null" ? cleanedInbox : "[]");
+      inbox = [...inbox, newInvite].slice(-5);
+      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${toId}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
     } catch (e) {}
   };
 
-  return {
-    state, remotePeers,
-    setView: (v: View) => setState(prev => ({ ...prev, currentView: v })),
-    createSession, sendInvite, respondToInvite,
-    resetApp: () => { localStorage.clear(); window.location.reload(); }
+  const respondToInvite = async (inviteId: string, action: 'ACCEPTED' | 'DECLINED', note?: string) => {
+    setState(prev => ({
+      ...prev,
+      invites: prev.invites.map(inv => inv.id === inviteId ? { ...inv, status: action, coordinationNote: note || inv.coordinationNote, respondedAt: Date.now() } : inv)
+    }));
+
+    try {
+      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${action}`, { method: 'POST' });
+      
+      if (state.currentSession) {
+        const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession.id}`);
+        const inboxText = await inboxRes.text();
+        const cleanedInbox = inboxText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"');
+        let inbox = JSON.parse(cleanedInbox && cleanedInbox !== "null" ? cleanedInbox : "[]") as Invite[];
+        inbox = inbox.filter(i => i.id !== inviteId);
+        await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${state.currentSession.id}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
+      }
+    } catch (e) {}
+  };
+
+  const updateInviteNote = (inviteId: string, note: string) => {
+    setState(prev => ({
+      ...prev,
+      invites: prev.invites.map(inv => inv.id === inviteId ? { ...inv, coordinationNote: note } : inv)
+    }));
+  };
+
+  const resetApp = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    setState(initialState);
+    setRemotePeers([]);
+    window.location.reload();
+  };
+
+  return { 
+    state, 
+    remotePeers, 
+    setState, 
+    setView: (view: View) => setState(prev => ({...prev, currentView: view})), 
+    createSession, 
+    sendInvite, 
+    respondToInvite, 
+    updateInviteNote, 
+    resetApp, 
+    updateAccessibility,
+    updateInviteDuration
   };
 }
