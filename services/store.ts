@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, Session, Invite, View, AreaId, Interest, AccessibilitySettings } from '../types';
 import { STORAGE_KEY, INVITE_DURATION_MS } from '../constants';
@@ -16,7 +17,7 @@ const DEFAULT_ACCESSIBILITY: AccessibilitySettings = {
 };
 
 const RELAY_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
-const APP_TOKEN = 'gb_v_ultra_stable_888'; // BRAND NEW TOKEN FOR FRESH START
+const APP_TOKEN = 'gb_v8_final_sync'; // NEW TOKEN TO ENSURE CLEAN STATE
 
 const encode = (obj: any) => {
   try { return btoa(encodeURIComponent(JSON.stringify(obj))); } 
@@ -33,9 +34,11 @@ const decode = (base64: string) => {
 
 export function useGoldenBuddyStore() {
   const [state, setState] = useState<AppState>(() => {
-    // Force reset old storage keys if they exist
+    // Purge old storage to force new sync protocol
     localStorage.removeItem('goldenbuddy_v2_state');
-    const saved = localStorage.getItem('gb_v_ultra_final_key');
+    localStorage.removeItem('gb_v_ultra_final_key');
+    
+    const saved = localStorage.getItem('gb_v8_storage');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -49,47 +52,50 @@ export function useGoldenBuddyStore() {
   const syncBusy = useRef(false);
 
   useEffect(() => {
-    localStorage.setItem('gb_v_ultra_final_key', JSON.stringify(state));
+    localStorage.setItem('gb_v8_storage', JSON.stringify(state));
   }, [state]);
 
   const sync = useCallback(async () => {
     if (!state.currentSession || syncBusy.current) return;
     syncBusy.current = true;
     try {
-      // 1. I am here
+      // 1. Update My Presence
       const me = encode({ ...state.currentSession, lastSeenAt: Date.now() });
       await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/u_${state.currentSession.id}/${me}`, { method: 'POST' });
       
-      // 2. Refresh directory
+      // 2. Refresh Directory for this Area
       const dirRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/dir_${state.currentSession.areaId}`);
       let dir = JSON.parse((await dirRes.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
       if (!dir.includes(state.currentSession.id)) {
-        dir = [...dir, state.currentSession.id].slice(-15);
+        dir = [...dir, state.currentSession.id].slice(-10);
         await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/dir_${state.currentSession.areaId}/${encodeURIComponent(JSON.stringify(dir))}`, { method: 'POST' });
       }
 
-      // 3. Peers status
+      // 3. Get Peer Sessions
       const peerData = await Promise.all(dir.filter((id: string) => id !== state.currentSession?.id).map(async (id: string) => {
         const r = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/u_${id}`);
         return decode(await r.text());
       }));
-      setRemotePeers(peerData.filter(p => p && (Date.now() - p.lastSeenAt < 35000)));
+      setRemotePeers(peerData.filter(p => p && (Date.now() - p.lastSeenAt < 30000)));
 
-      // 4. HANDSHAKE: INCOMING
+      // 4. Check Inbox (Incoming Requests)
       const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/in_${state.currentSession.id}`);
       const incoming = JSON.parse((await inboxRes.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
       if (incoming.length > 0) {
         setState(prev => {
-          const updated = [...prev.invites];
-          let changed = false;
+          const freshInvites = [...prev.invites];
+          let updated = false;
           incoming.forEach(inc => {
-            if (!updated.some(ex => ex.id === inc.id)) { updated.push(inc); changed = true; }
+            if (!freshInvites.some(fi => fi.id === inc.id)) {
+              freshInvites.push(inc);
+              updated = true;
+            }
           });
-          return changed ? { ...prev, invites: updated } : prev;
+          return updated ? { ...prev, invites: freshInvites } : prev;
         });
       }
 
-      // 5. HANDSHAKE: OUTGOING WATCHER
+      // 5. Watch Outgoing Invites for Responses
       const pendingOut = state.invites.filter(i => i.fromSessionId === state.currentSession?.id && i.status === 'PENDING');
       for (const inv of pendingOut) {
         const vRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/v_${inv.id}`);
@@ -101,12 +107,16 @@ export function useGoldenBuddyStore() {
           }));
         }
       }
-    } catch (e) {} finally { syncBusy.current = false; }
+    } catch (e) {
+      console.error("Sync Error:", e);
+    } finally {
+      syncBusy.current = false;
+    }
   }, [state.currentSession, state.invites]);
 
   useEffect(() => {
     if (!state.currentSession) return;
-    const interval = setInterval(sync, 2500); // Poll every 2.5s for responsiveness
+    const interval = setInterval(sync, 2000); // 2 second sync interval
     return () => clearInterval(interval);
   }, [state.currentSession, sync]);
 
@@ -158,9 +168,9 @@ export function useGoldenBuddyStore() {
     setState(prev => ({ ...prev, invites: prev.invites.map(i => i.id === inviteId ? updated : i) }));
 
     try {
-      // 1. Inform the sender
+      // 1. Inform the sender via Vote key
       await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${encode(updated)}`, { method: 'POST' });
-      // 2. Clear my inbox
+      // 2. Remove from my own inbox
       const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/in_${state.currentSession.id}`);
       let inbox = JSON.parse((await inboxRes.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]") as Invite[];
       inbox = inbox.filter(i => i.id !== inviteId);
