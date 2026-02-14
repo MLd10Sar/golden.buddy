@@ -2,12 +2,25 @@
 import { GoogleGenAI } from "@google/genai";
 import { Session, Interest } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+/**
+ * Helper to safely initialize the AI client only when needed.
+ * This prevents module-level crashes if process.env is missing.
+ */
+function getAIClient() {
+  if (typeof process === 'undefined' || !process.env?.API_KEY) {
+    console.warn("API Key missing. Gemini features will be disabled.");
+    return null;
+  }
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+}
 
 /**
  * Generates an AI-powered insight on why two buddies are a good match.
  */
 export async function getBuddyInsight(user: Session, buddy: any) {
+  const ai = getAIClient();
+  if (!ai) return null;
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -22,16 +35,13 @@ export async function getBuddyInsight(user: Session, buddy: any) {
     });
     
     const text = response.text || "";
-    // Basic split for insight and icebreaker
-    const [insight, icebreaker] = text.split(/\?|\./).reduce((acc: string[], val, idx, arr) => {
-        if (idx < arr.length - 1) acc[0] = (acc[0] || "") + val + (idx === arr.length - 2 ? "?" : ".");
-        else acc[1] = val.trim();
-        return acc;
-    }, []);
+    const parts = text.split(/\?|\./);
+    const insight = parts[0] || text;
+    const icebreaker = parts[1]?.trim() || "How long have you lived in the neighborhood?";
 
     return {
-      insight: insight || text,
-      icebreaker: icebreaker || "How long have you lived in the neighborhood?"
+      insight: insight,
+      icebreaker: icebreaker
     };
   } catch (error) {
     console.error("Gemini Insight Error:", error);
@@ -40,9 +50,12 @@ export async function getBuddyInsight(user: Session, buddy: any) {
 }
 
 /**
- * Uses Google Search/Maps grounding to find a safe public meeting spot with specific metadata.
+ * Uses Google Search/Maps grounding to find a safe public meeting spot.
  */
 export async function getSmartMeetingSpot(areaName: string, activity: Interest) {
+  const ai = getAIClient();
+  if (!ai) return null;
+
   try {
     const prompt = `Find one specific, very safe, and popular public meeting spot in ${areaName} for two seniors to meet for ${activity}. 
                     Provide exactly these 5 fields with these exact labels:
@@ -63,7 +76,6 @@ export async function getSmartMeetingSpot(areaName: string, activity: Interest) 
     const text = response.text || "";
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => chunk.web?.uri).filter(Boolean) || [];
 
-    // Helper to extract values based on labels
     const extract = (label: string) => {
       const regex = new RegExp(`${label}:\\s*(.*)`, 'i');
       const match = text.match(regex);
@@ -95,16 +107,14 @@ export async function getSmartMeetingSpot(areaName: string, activity: Interest) 
  * Polishes a coordination note or suggests one if none exists.
  */
 export async function polishCoordinationNote(note: string, activity?: Interest, areaName?: string) {
+  const ai = getAIClient();
+  if (!ai) return note;
+
   try {
     const isSuggestion = !note.trim();
     const prompt = isSuggestion
-      ? `You are an AI for a senior social app. Suggest one very warm, short, and practical coordination note for a senior meeting a buddy for ${activity || 'an activity'} in ${areaName || 'the neighborhood'}. 
-         The note should help them spot each other (e.g., "I'll be near the fountain in a blue jacket").
-         Return ONLY the text of the note.`
-      : `You are an AI for a senior social app. Polish this coordination note for meeting a buddy for ${activity || 'an activity'} in ${areaName || 'the neighborhood'}.
-         Make it warmer, clearer, and more helpful for seniors.
-         Original note: "${note}"
-         Return ONLY the polished text.`;
+      ? `You are an AI for a senior social app. Suggest one short, warm coordination note for meeting a buddy for ${activity || 'an activity'} in ${areaName || 'the neighborhood'}. Return ONLY the text.`
+      : `You are an AI for a senior social app. Polish this coordination note for clarity: "${note}". Return ONLY the polished text.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
