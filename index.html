@@ -1,22 +1,33 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>GoldenBuddy AI - Fixed Sync</title>
+  <title>GoldenBuddy AI - Neighborhood Companion</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: contain; }
+    body { 
+      font-family: 'Inter', sans-serif; 
+      -webkit-tap-highlight-color: transparent; 
+      overscroll-behavior-y: none;
+      background-color: #f8fafc;
+    }
     .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
     .animate-slideIn { animation: slideIn 0.5s ease-out; }
     .animate-scaleUp { animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     @keyframes scaleUp { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-    select { appearance: none; -webkit-appearance: none; }
+    
+    /* Custom Scrollbar for Senior Friendly Design */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
   <script>window.process = { env: { API_KEY: "" } };</script>
   <script type="importmap">
@@ -31,7 +42,7 @@
 }
 </script>
 </head>
-<body class="bg-slate-50">
+<body>
   <div id="root"></div>
   <script type="text/babel" data-type="module" data-presets="typescript,react" src="./index.tsx"></script>
 </body>
