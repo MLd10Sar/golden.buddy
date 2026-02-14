@@ -3,15 +3,31 @@ import { GoogleGenAI } from "@google/genai";
 import { Session, Interest } from "../types";
 
 /**
- * Helper to safely initialize the AI client only when needed.
- * This prevents module-level crashes if process.env is missing.
+ * Safely access the API Key. 
+ * On static hosts like GitHub Pages, process.env is usually undefined.
+ */
+function getApiKey(): string | null {
+  try {
+    // Check if process exists and has an env property
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      return process.env.API_KEY;
+    }
+  } catch (e) {
+    // Fallback for strict environments
+  }
+  return null;
+}
+
+/**
+ * Helper to initialize the AI client only when needed.
  */
 function getAIClient() {
-  if (typeof process === 'undefined' || !process.env?.API_KEY) {
-    console.warn("API Key missing. Gemini features will be disabled.");
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    console.warn("Gemini API Key is not configured. AI features will be unavailable.");
     return null;
   }
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return new GoogleGenAI({ apiKey });
 }
 
 /**
