@@ -43,33 +43,37 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900 flex items-center justify-center font-sans">
-      <div className="w-full h-[100dvh] max-w-md bg-slate-50 relative flex flex-col md:h-[90vh] md:rounded-[3rem] md:shadow-2xl overflow-hidden transition-all duration-500 ease-in-out">
-        {/* Mobile-Native Glass Header */}
-        <header className="safe-top px-6 py-4 bg-white/70 backdrop-blur-lg border-b border-slate-100 flex justify-between items-center z-50">
-          <div className="flex items-center gap-2" onClick={() => setView('DASHBOARD')}>
-            <div className="w-9 h-9 bg-amber-400 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-200">
+    <div className="fixed inset-0 bg-[#0f172a] flex items-center justify-center font-sans">
+      <div className="w-full h-[100dvh] max-w-md bg-white relative flex flex-col md:h-[92vh] md:rounded-[3.5rem] md:shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-700">
+        
+        {/* Mobile Header: Glass Effect */}
+        <header className="safe-top px-6 py-4 bg-white/70 backdrop-blur-xl border-b border-slate-100 flex justify-between items-center z-50">
+          <div className="flex items-center gap-3" onClick={() => setView('DASHBOARD')}>
+            <div className="w-10 h-10 bg-amber-400 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-200 animate-pulse">
               <span className="text-xl">🌟</span>
             </div>
-            <h1 className="font-extrabold text-lg tracking-tight text-slate-900 uppercase">GoldenBuddy</h1>
+            <div className="flex flex-col">
+              <h1 className="font-black text-lg tracking-tighter text-slate-900 leading-none uppercase">GoldenBuddy</h1>
+              <span className="text-[9px] font-extrabold text-amber-500 uppercase tracking-widest mt-0.5">Live Connection</span>
+            </div>
           </div>
           {state.currentSession && (
             <button 
               onClick={() => setView('PROFILE')} 
-              className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200 active:scale-90 transition-transform">
-              ⚙️
+              className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center border border-slate-200 active:scale-90 transition-transform shadow-sm">
+              <span className="text-lg">⚙️</span>
             </button>
           )}
         </header>
 
-        <main className="flex-1 overflow-y-auto no-scrollbar relative animate-spring">
+        <main className="flex-1 overflow-y-auto no-scrollbar relative">
           {renderView()}
         </main>
 
-        <footer className="safe-bottom p-4 flex flex-col items-center bg-white/50 backdrop-blur-md">
-           <div className="flex items-center gap-2 px-4 py-2 bg-green-50 rounded-full border border-green-100">
-             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-             <span className="text-[10px] font-extrabold text-green-700 uppercase tracking-widest">Neighborhood Live</span>
+        <footer className="safe-bottom px-6 py-4 bg-white/60 backdrop-blur-md flex flex-col items-center border-t border-slate-50">
+           <div className="flex items-center gap-2 px-6 py-2 bg-emerald-50 rounded-full border border-emerald-100 shadow-sm">
+             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+             <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Neighbor Mesh Active</span>
            </div>
         </footer>
       </div>
