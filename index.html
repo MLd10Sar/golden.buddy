@@ -17,22 +17,21 @@
       font-family: 'Plus Jakarta Sans', sans-serif; 
       -webkit-tap-highlight-color: transparent; 
       overscroll-behavior-y: none;
-      background-color: #0f172a;
+      background-color: #0f172a; /* Slate 900 for nice background contrast */
     }
     .safe-top { padding-top: var(--safe-top); }
     .safe-bottom { padding-bottom: calc(var(--safe-bottom) + 1.5rem); }
     
-    .animate-spring { animation: spring 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    .animate-spring { animation: spring 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
     @keyframes spring {
-      from { transform: scale(0.92); opacity: 0; }
+      from { transform: scale(0.9); opacity: 0; }
       to { transform: scale(1); opacity: 1; }
     }
     
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     
-    .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); }
-    .shadow-clay { shadow: 0 10px 30px -10px rgba(0,0,0,0.1), inset 0 2px 4px rgba(255,255,255,0.8); }
+    .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(16px); }
   </style>
   <script>window.process = { env: { API_KEY: "" } };</script>
   <script type="importmap">
@@ -47,7 +46,7 @@
 }
 </script>
 </head>
-<body>
+<body class="overflow-hidden">
   <div id="root"></div>
   <script type="text/babel" data-type="module" data-presets="typescript,react" src="./index.tsx"></script>
 </body>
