@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useGoldenBuddyStore } from './services/store';
 import { WelcomeView } from './views/Welcome';
@@ -18,7 +19,6 @@ const App: React.FC = () => {
     createSession, 
     sendInvite, 
     respondToInvite, 
-    updateInviteNote,
     resetApp, 
     updateAccessibility,
     retrySync
@@ -44,7 +44,7 @@ const App: React.FC = () => {
       case 'NAME': return <NamePicker name={tempName} onSetName={setTempName} onNext={() => setView('LOCATION')} onBack={() => setView('WELCOME')} />;
       case 'LOCATION': return <LocationPicker selectedArea={tempArea} onSelect={(area) => { setTempArea(area); setView('INTERESTS'); }} onBack={() => setView('NAME')} />;
       case 'INTERESTS': return <InterestPicker selectedInterests={tempInterests} onToggle={(interest) => { setTempInterests(prev => prev.includes(interest) ? prev.filter(i => i !== interest) : [...prev, interest]); }} onNext={() => createSession(tempName, tempArea!, tempInterests)} onBack={() => setView('LOCATION')} />;
-      case 'DASHBOARD': return <Dashboard session={state.currentSession!} invites={state.invites} remotePeers={remotePeers} onSendInvite={sendInvite} onRespond={respondToInvite} onUpdateNote={updateInviteNote} onReset={resetApp} />;
+      case 'DASHBOARD': return <Dashboard session={state.currentSession!} invites={state.invites} remotePeers={remotePeers} onSendInvite={sendInvite} onRespond={respondToInvite} onUpdateNote={()=>{}} onReset={resetApp} />;
       case 'PROFILE': return <ProfileView session={state.currentSession!} onBack={() => setView('DASHBOARD')} onEditInterests={() => setView('INTERESTS')} onUpdateName={()=>{}} onReset={resetApp} onUpdateAccessibility={updateAccessibility} onUpdateInviteDuration={()=>{}} />;
       default: return <WelcomeView onNext={() => setView('NAME')} />;
     }
@@ -64,19 +64,20 @@ const App: React.FC = () => {
 
       <main className="flex-1 overflow-y-auto relative bg-amber-50/20">
         {syncStatus === 'ERROR' && (
-          <div className="bg-amber-100 p-3 border-b border-amber-200 flex items-center justify-between gap-4 animate-fadeIn sticky top-0 z-[60]">
-            <p className="text-[10px] font-bold text-amber-800 uppercase">📡 Reconnecting to neighborhood...</p>
-            <button onClick={retrySync} className="text-[9px] font-black bg-amber-400 text-amber-950 px-3 py-1 rounded-full uppercase shadow-sm active:scale-90">Retry</button>
+          <div className="bg-amber-100 p-2 px-4 border-b border-amber-200 flex items-center justify-between gap-4 animate-fadeIn sticky top-0 z-[60]">
+            <p className="text-[9px] font-black text-amber-800 uppercase">📡 Neighborhood sync lag...</p>
+            <button onClick={retrySync} className="text-[8px] font-black bg-amber-400 text-amber-950 px-2 py-1 rounded-full uppercase">Retry</button>
           </div>
         )}
         {renderView()}
       </main>
 
       <footer className="bg-slate-900 text-slate-500 text-[8px] text-center py-2 font-black uppercase tracking-widest border-t border-slate-800 flex items-center justify-center gap-4 shrink-0">
-        <span className={syncStatus === 'SYNCING' ? 'animate-pulse text-amber-400' : ''}>
-          {syncStatus === 'SYNCING' ? '● SYNCING' : '● NEIGHBORHOOD ONLINE'}
+        <span className="flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full ${syncStatus === 'SYNCING' ? 'bg-amber-400 animate-ping' : syncStatus === 'ERROR' ? 'bg-red-500' : 'bg-green-500'}`} />
+          {syncStatus === 'SYNCING' ? 'Syncing...' : syncStatus === 'ERROR' ? 'Slow Connection' : 'Online'}
         </span>
-        {state.currentSession && <span>LAST: {new Date(lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+        {state.currentSession && <span>{new Date(lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
       </footer>
     </div>
   );
