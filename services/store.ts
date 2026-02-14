@@ -237,21 +237,18 @@ export function useGoldenBuddyStore() {
     })
   }));
 
-  try {
-    // Only send ACCEPTED to relay when both accepted
-    if (finalStatus === 'ACCEPTED' || finalStatus === 'DECLINED') {
-      await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${finalStatus}`, { method: 'POST' });
-    }
+ try {
+  await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/v_${inviteId}/${finalStatus}`, { method: 'POST' });
 
-    // clean inbox (existing logic)
-    const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession.id}`);
-    const inboxText = await inboxRes.text();
-    const cleanedInbox = inboxText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"');
-    let inbox = JSON.parse(cleanedInbox && cleanedInbox !== "null" ? cleanedInbox : "[]") as Invite[];
-    inbox = inbox.filter(i => i.id !== inviteId);
-    await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${state.currentSession.id}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
+  const inboxRes = await fetch(`${RELAY_BASE}/GetValue/${APP_TOKEN}/i_${state.currentSession.id}`);
+  const inboxText = await inboxRes.text();
+  const cleanedInbox = inboxText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"');
+  let inbox = JSON.parse(cleanedInbox && cleanedInbox !== "null" ? cleanedInbox : "[]") as Invite[];
+  inbox = inbox.filter(i => i.id !== inviteId);
+  await fetch(`${RELAY_BASE}/UpdateValue/${APP_TOKEN}/i_${state.currentSession.id}/${encodeURIComponent(JSON.stringify(inbox))}`, { method: 'POST' });
 
-  } catch (e) {}
+} catch (e) {}
+
 };
 
 
