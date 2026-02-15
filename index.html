@@ -205,6 +205,14 @@
         .activity-btn[data-activity="Walking"].selected { background: #4CAF50; border-color: #4CAF50; }
         .activity-btn[data-activity="Chess"].selected { background: #5C6BC0; border-color: #5C6BC0; }
         .activity-btn[data-activity="Coffee"].selected { background: #FF7043; border-color: #FF7043; }
+        .activity-btn[data-activity="Bingo"].selected { background: #E91E63; border-color: #E91E63; }
+        .activity-btn[data-activity="Books"].selected { background: #9C27B0; border-color: #9C27B0; }
+        .activity-btn[data-activity="Exercise"].selected { background: #00BCD4; border-color: #00BCD4; }
+        .activity-btn[data-activity="BoardGames"].selected { background: #795548; border-color: #795548; }
+        .activity-btn[data-activity="Dancing"].selected { background: #FF5722; border-color: #FF5722; }
+        .activity-btn[data-activity="Art"].selected { background: #CDDC39; border-color: #CDDC39; color: #333; }
+        .activity-btn[data-activity="Gardening"].selected { background: #8BC34A; border-color: #8BC34A; }
+        .activity-btn[data-activity="Swimming"].selected { background: #3F51B5; border-color: #3F51B5; }
 
         .neighbor-card {
             display: flex;
@@ -538,16 +546,40 @@
             </div>
 
             <div class="input-group">
-                <label>What do you like to do?</label>
-                <div class="activity-icons">
-                    <button class="activity-btn" data-activity="Walking" onclick="selectActivity(this)">
+                <label>What do you like to do? (select multiple)</label>
+                <div class="activity-grid" id="activityGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+                    <button class="activity-btn" data-activity="Walking" onclick="toggleActivity(this)">
                         <span class="icon">🚶</span><span>Walking</span>
                     </button>
-                    <button class="activity-btn" data-activity="Chess" onclick="selectActivity(this)">
+                    <button class="activity-btn" data-activity="Chess" onclick="toggleActivity(this)">
                         <span class="icon">♟️</span><span>Chess</span>
                     </button>
-                    <button class="activity-btn" data-activity="Coffee" onclick="selectActivity(this)">
-                        <span class="icon">☕</span><span>Coffee</span>
+                    <button class="activity-btn" data-activity="Coffee" onclick="toggleActivity(this)">
+                        <span class="icon">☕</span><span>Coffee/Tea</span>
+                    </button>
+                    <button class="activity-btn" data-activity="Bingo" onclick="toggleActivity(this)">
+                        <span class="icon">🎱</span><span>Bingo</span>
+                    </button>
+                    <button class="activity-btn" data-activity="Books" onclick="toggleActivity(this)">
+                        <span class="icon">📚</span><span>Book Club</span>
+                    </button>
+                    <button class="activity-btn" data-activity="Exercise" onclick="toggleActivity(this)">
+                        <span class="icon">🧘</span><span>Exercise</span>
+                    </button>
+                    <button class="activity-btn" data-activity="BoardGames" onclick="toggleActivity(this)">
+                        <span class="icon">🎲</span><span>Board Games</span>
+                    </button>
+                    <button class="activity-btn" data-activity="Dancing" onclick="toggleActivity(this)">
+                        <span class="icon">💃</span><span>Dancing</span>
+                    </button>
+                    <button class="activity-btn" data-activity="Art" onclick="toggleActivity(this)">
+                        <span class="icon">🎨</span><span>Art/Painting</span>
+                    </button>
+                    <button class="activity-btn" data-activity="Gardening" onclick="toggleActivity(this)">
+                        <span class="icon">🌱</span><span>Gardening</span>
+                    </button>
+                    <button class="activity-btn" data-activity="Swimming" onclick="toggleActivity(this)">
+                        <span class="icon">🏊</span><span>Swimming</span>
                     </button>
                 </div>
             </div>
@@ -566,11 +598,13 @@
                 </div>
             </div>
 
-            <div class="tabs">
+            <div class="tabs" id="activityTabs">
                 <button class="tab active" onclick="filterActivity('all',this)">All</button>
                 <button class="tab" onclick="filterActivity('Walking',this)">🚶</button>
                 <button class="tab" onclick="filterActivity('Chess',this)">♟️</button>
                 <button class="tab" onclick="filterActivity('Coffee',this)">☕</button>
+                <button class="tab" onclick="filterActivity('Bingo',this)">🎱</button>
+                <button class="tab" onclick="filterActivity('Books',this)">📚</button>
             </div>
 
             <div id="neighborsList">
@@ -696,16 +730,40 @@
                 </div>
 
                 <div class="input-group">
-                    <label>What do you like to do?</label>
-                    <div class="activity-icons" id="editActivityIcons">
-                        <button class="activity-btn" data-activity="Walking" onclick="selectEditActivity(this)">
+                    <label>What do you like to do? (select multiple)</label>
+                    <div class="activity-grid" id="editActivityIcons" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+                        <button class="activity-btn" data-activity="Walking" onclick="toggleEditActivity(this)">
                             <span class="icon">🚶</span><span>Walking</span>
                         </button>
-                        <button class="activity-btn" data-activity="Chess" onclick="selectEditActivity(this)">
+                        <button class="activity-btn" data-activity="Chess" onclick="toggleEditActivity(this)">
                             <span class="icon">♟️</span><span>Chess</span>
                         </button>
-                        <button class="activity-btn" data-activity="Coffee" onclick="selectEditActivity(this)">
-                            <span class="icon">☕</span><span>Coffee</span>
+                        <button class="activity-btn" data-activity="Coffee" onclick="toggleEditActivity(this)">
+                            <span class="icon">☕</span><span>Coffee/Tea</span>
+                        </button>
+                        <button class="activity-btn" data-activity="Bingo" onclick="toggleEditActivity(this)">
+                            <span class="icon">🎱</span><span>Bingo</span>
+                        </button>
+                        <button class="activity-btn" data-activity="Books" onclick="toggleEditActivity(this)">
+                            <span class="icon">📚</span><span>Book Club</span>
+                        </button>
+                        <button class="activity-btn" data-activity="Exercise" onclick="toggleEditActivity(this)">
+                            <span class="icon">🧘</span><span>Exercise</span>
+                        </button>
+                        <button class="activity-btn" data-activity="BoardGames" onclick="toggleEditActivity(this)">
+                            <span class="icon">🎲</span><span>Board Games</span>
+                        </button>
+                        <button class="activity-btn" data-activity="Dancing" onclick="toggleEditActivity(this)">
+                            <span class="icon">💃</span><span>Dancing</span>
+                        </button>
+                        <button class="activity-btn" data-activity="Art" onclick="toggleEditActivity(this)">
+                            <span class="icon">🎨</span><span>Art</span>
+                        </button>
+                        <button class="activity-btn" data-activity="Gardening" onclick="toggleEditActivity(this)">
+                            <span class="icon">🌱</span><span>Gardening</span>
+                        </button>
+                        <button class="activity-btn" data-activity="Swimming" onclick="toggleEditActivity(this)">
+                            <span class="icon">🏊</span><span>Swimming</span>
                         </button>
                     </div>
                 </div>
@@ -740,6 +798,38 @@
 
                 <button class="btn btn-accent btn-full" onclick="textFamily()">📱 Text My Family</button>
                 <button class="btn btn-outline btn-full" style="margin-top:12px" onclick="endConnection()">End Connection</button>
+            </div>
+        </div>
+
+        <!-- Private Note Modal -->
+        <div class="modal-overlay" id="noteModal">
+            <div class="modal">
+                <h2>📝 Note for <span id="noteModalName">-</span></h2>
+                <div class="input-group">
+                    <label>Private note (only you can see)</label>
+                    <input type="text" id="noteInput" placeholder="e.g., Likes morning walks" maxlength="100">
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-outline" onclick="closeNoteModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveNote()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rating Modal -->
+        <div class="modal-overlay" id="ratingModal">
+            <div class="modal">
+                <h2>👍 Rate Your Meetup</h2>
+                <p>How was your meetup with <span id="ratingModalName">-</span>?</p>
+                <div style="display:flex;gap:12px;margin:24px 0">
+                    <button class="btn btn-primary btn-full" onclick="submitRating('good')" style="background:#4CAF50">
+                        👍 Good
+                    </button>
+                    <button class="btn btn-danger btn-full" onclick="submitRating('bad')">
+                        👎 Not Good
+                    </button>
+                </div>
+                <button class="btn btn-outline btn-full" onclick="closeRatingModal()">Skip</button>
             </div>
         </div>
     </div>
@@ -789,7 +879,11 @@
             selectedNeighbor: null,
             currentFilter: 'all',
             pendingSafetyAction: null,
-            userStatus: 'Looking' // Looking, Busy, Away
+            userStatus: 'Looking', // Looking, Busy, Away
+            userActivities: [], // Multiple activities
+            favorites: {}, // { neighborId: true }
+            privateNotes: {}, // { neighborId: "note text" }
+            ratings: {} // { neighborId: { rating: 'good'|'bad', timestamp } }
         };
 
         const AREAS_BY_STATE = {
@@ -979,7 +1073,7 @@
             
             if (!name) { showNotification('Please enter your name', 'error'); return; }
             if (!areaValue) { showNotification('Please select your area', 'error'); return; }
-            if (!state.activity) { showNotification('Please select an activity', 'error'); return; }
+            if (state.userActivities.length === 0) { showNotification('Please select at least one activity', 'error'); return; }
 
             const [stateCode, areaKey] = areaValue.split('|');
             const areaName = AREAS_BY_STATE[stateCode]?.[areaKey] || areaValue;
@@ -991,8 +1085,18 @@
                 state: stateCode,
                 area: areaValue,
                 areaName: areaName,
-                activity: state.activity 
+                activities: state.userActivities,
+                activity: state.userActivities[0]
             };
+            
+            // Load favorites and notes from localStorage
+            const savedData = localStorage.getItem('goldenbuddy_data');
+            if (savedData) {
+                const data = JSON.parse(savedData);
+                state.favorites = data.favorites || {};
+                state.privateNotes = data.privateNotes || {};
+                state.ratings = data.ratings || {};
+            }
             
             localStorage.setItem('goldenbuddy_user', JSON.stringify(state.userData));
             
@@ -1001,10 +1105,26 @@
             showNotification('Welcome, ' + name + '!', 'success');
         }
 
+        function toggleActivity(btn) {
+            const activity = btn.dataset.activity;
+            const index = state.userActivities.indexOf(activity);
+            
+            if (index > -1) {
+                state.userActivities.splice(index, 1);
+                btn.classList.remove('selected');
+            } else {
+                state.userActivities.push(activity);
+                btn.classList.add('selected');
+            }
+            
+            // Set primary activity for display
+            state.activity = state.userActivities[0] || 'Walking';
+        }
+
         function selectActivity(btn) {
-            document.querySelectorAll('.activity-btn').forEach(b => b.classList.remove('selected'));
+            // For edit profile - single select
+            document.querySelectorAll('#editActivityIcons .activity-btn').forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
-            state.activity = btn.dataset.activity;
         }
 
         // ===== Status Toggle =====
@@ -1056,8 +1176,18 @@
             let filtered = state.neighbors;
 
             if (state.currentFilter !== 'all') {
-                filtered = filtered.filter(n => n.activity === state.currentFilter);
+                filtered = filtered.filter(n => {
+                    const activities = n.activities || [n.activity];
+                    return activities.includes(state.currentFilter);
+                });
             }
+
+            // Sort favorites to top
+            filtered.sort((a, b) => {
+                const aFav = state.favorites[a.id] ? 1 : 0;
+                const bFav = state.favorites[b.id] ? 1 : 0;
+                return bFav - aFav;
+            });
 
             if (filtered.length === 0) {
                 container.innerHTML = `
@@ -1069,27 +1199,119 @@
                 return;
             }
 
-            const activityIcons = { 'Walking': '🚶', 'Chess': '♟️', 'Coffee': '☕' };
-            const activityColors = { 'Walking': '#4CAF50', 'Chess': '#5C6BC0', 'Coffee': '#FF7043' };
+            const activityIcons = { 
+                'Walking': '🚶', 'Chess': '♟️', 'Coffee': '☕', 
+                'Bingo': '🎱', 'Books': '📚', 'Exercise': '🧘',
+                'BoardGames': '🎲', 'Dancing': '💃', 'Art': '🎨',
+                'Gardening': '🌱', 'Swimming': '🏊'
+            };
             
             container.innerHTML = filtered.map(n => {
-                const icon = activityIcons[n.activity] || '👤';
-                const color = activityColors[n.activity] || 'var(--primary)';
+                const activities = n.activities || [n.activity];
+                const primaryActivity = activities[0];
+                const icon = activityIcons[primaryActivity] || '👤';
+                const isFav = state.favorites[n.id];
+                const hasNote = state.privateNotes[n.id];
+                
+                // Get all icons for this neighbor
+                const activityBadges = activities.map(a => 
+                    `<span style="font-size:12px;margin-right:4px">${activityIcons[a] || ''}</span>`
+                ).join('');
+                
                 return `
-                <div class="neighbor-card" style="border-left: 4px solid ${color}">
-                    <div class="neighbor-avatar" style="background:${color};color:white;font-weight:bold">${icon}</div>
+                <div class="neighbor-card" style="border-left: 4px solid var(--primary)">
+                    <div class="neighbor-avatar" style="background:var(--primary);color:white;font-weight:bold">${icon}</div>
                     <div class="neighbor-info">
-                        <div class="neighbor-name">${n.name}</div>
-                        <div class="neighbor-activity" style="color:${color}">${icon} ${n.activity || 'Looking around'}</div>
+                        <div class="neighbor-name" style="display:flex;align-items:center;gap:6px">
+                            ${n.name}
+                            ${isFav ? '<span style="color:#FFC107">⭐</span>' : ''}
+                            ${hasNote ? '<span style="color:#9C27B0;font-size:12px">📝</span>' : ''}
+                        </div>
+                        <div class="neighbor-activity" style="font-size:14px;color:var(--text-secondary)">
+                            ${activityBadges}
+                        </div>
                         <div class="neighbor-status">
                             <span class="online-dot active"></span> Online now
                         </div>
                     </div>
-                    <button class="btn btn-accent btn-small" onclick="openInviteModal('${n.id}', '${n.name}', '${n.activity}')">
-                        Invite
-                    </button>
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                        <button class="btn btn-small" style="padding:6px 12px;font-size:12px" onclick="toggleFavorite('${n.id}', '${n.name}')">
+                            ${isFav ? '⭐' : '☆'}
+                        </button>
+                        <button class="btn btn-accent btn-small" style="padding:6px 12px;font-size:12px" onclick="openInviteModal('${n.id}', '${n.name}', '${primaryActivity}')">
+                            Invite
+                        </button>
+                    </div>
                 </div>`;
             }).join('');
+        }
+
+        // ===== Favorites =====
+        function toggleFavorite(id, name) {
+            if (state.favorites[id]) {
+                delete state.favorites[id];
+                showNotification('Removed from favorites', 'success');
+            } else {
+                state.favorites[id] = true;
+                showNotification('Added to favorites! ⭐', 'success');
+            }
+            savePrivateData();
+            renderNeighbors();
+        }
+
+        // ===== Private Notes =====
+        function showNoteModal(id, name) {
+            state.noteTargetId = id;
+            document.getElementById('noteModalName').textContent = name;
+            document.getElementById('noteInput').value = state.privateNotes[id] || '';
+            document.getElementById('noteModal').classList.add('active');
+        }
+
+        function saveNote() {
+            const note = document.getElementById('noteInput').value.trim();
+            if (note) {
+                state.privateNotes[state.noteTargetId] = note;
+                showNotification('Note saved! 📝', 'success');
+            } else {
+                delete state.privateNotes[state.noteTargetId];
+            }
+            savePrivateData();
+            closeNoteModal();
+            renderNeighbors();
+        }
+
+        function closeNoteModal() {
+            document.getElementById('noteModal').classList.remove('active');
+        }
+
+        function savePrivateData() {
+            localStorage.setItem('goldenbuddy_data', JSON.stringify({
+                favorites: state.favorites,
+                privateNotes: state.privateNotes,
+                ratings: state.ratings
+            }));
+        }
+
+        // ===== Ratings =====
+        function showRatingModal(buddyId, buddyName) {
+            state.ratingTargetId = buddyId;
+            state.ratingTargetName = buddyName;
+            document.getElementById('ratingModalName').textContent = buddyName;
+            document.getElementById('ratingModal').classList.add('active');
+        }
+
+        function submitRating(rating) {
+            state.ratings[state.ratingTargetId] = {
+                rating: rating,
+                timestamp: Date.now()
+            };
+            savePrivateData();
+            closeRatingModal();
+            showNotification(rating === 'good' ? 'Thanks! Rated as Good 👍' : 'Noted. We\'ll remember.', 'success');
+        }
+
+        function closeRatingModal() {
+            document.getElementById('ratingModal').classList.remove('active');
         }
 
         function filterActivity(activity, btn) {
@@ -1290,8 +1512,16 @@
         }
 
         function endConnection() {
+            const buddyId = state.connection?.buddyId;
+            const buddyName = state.connection?.name;
             state.connection = null;
+            
             showView('dashboardView');
+            
+            // Ask for rating
+            if (buddyId) {
+                showRatingModal(buddyId, buddyName);
+            }
         }
 
         // ===== Profile =====
@@ -1345,7 +1575,12 @@
             }
         }
 
+        function toggleEditActivity(btn) {
+            btn.classList.toggle('selected');
+        }
+
         function selectEditActivity(btn) {
+            // For compatibility with single-select
             document.querySelectorAll('#editActivityIcons .activity-btn').forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
         }
@@ -1357,8 +1592,16 @@
             if (!name) { showNotification('Please enter your name', 'error'); return; }
             if (!areaValue) { showNotification('Please select your area', 'error'); return; }
             
-            const selectedActivityBtn = document.querySelector('#editActivityIcons .activity-btn.selected');
-            const activity = selectedActivityBtn ? selectedActivityBtn.dataset.activity : state.userData.activity;
+            // Get selected activities
+            const selectedActivities = [];
+            document.querySelectorAll('#editActivityIcons .activity-btn.selected').forEach(btn => {
+                selectedActivities.push(btn.dataset.activity);
+            });
+            
+            if (selectedActivities.length === 0) { 
+                showNotification('Please select at least one activity', 'error'); 
+                return; 
+            }
             
             const [stateCode, areaKey] = areaValue.split('|');
             const areaName = AREAS_BY_STATE[stateCode]?.[areaKey] || areaValue;
@@ -1368,7 +1611,8 @@
             state.userData.state = stateCode;
             state.userData.area = areaValue;
             state.userData.areaName = areaName;
-            state.userData.activity = activity;
+            state.userData.activities = selectedActivities;
+            state.userData.activity = selectedActivities[0];
             
             localStorage.setItem('goldenbuddy_user', JSON.stringify(state.userData));
             
@@ -1379,7 +1623,8 @@
                     state: stateCode,
                     area: areaValue,
                     areaName: areaName,
-                    activity: activity
+                    activities: state.userData.activities,
+                    activity: state.userData.activity
                 });
             }
             
