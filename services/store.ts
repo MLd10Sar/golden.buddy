@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, Session, Invite, View, AreaId, Interest, AccessibilitySettings } from '../types';
 import { STORAGE_KEY, INVITE_DURATION_MS, AREAS } from '../constants';
@@ -16,9 +15,9 @@ const DEFAULT_ACCESSIBILITY: AccessibilitySettings = {
   screenReaderOptimized: false,
 };
 
-// RELAY CONFIG: Shortest possible token
+// RELAY CONFIG
 const RELAY_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
-const APP_TOKEN = 'gb_v5_norm'; 
+const APP_TOKEN = 'gb_stable_v6'; 
 
 const encodeData = (obj: any) => {
   try {
@@ -35,10 +34,20 @@ const decodeData = (base64: string) => {
   } catch (e) { return null; }
 };
 
-async function api(path: string, method: 'GET' | 'POST' = 'GET', body?: string) {
-  const url = `${RELAY_BASE}/${method === 'POST' ? 'UpdateValue' : 'GetValue'}/${APP_TOKEN}/${path}${body ? '/' + body : ''}`;
-  const res = await fetch(url, { method: 'POST', mode: 'cors', cache: 'no-store' });
-  if (!res.ok) throw new Error(`HTTP_${res.status}`);
+/**
+ * Robust API helper with correct HTTP methods
+ */
+async function api(path: string, method: 'GET' | 'POST' = 'GET', value?: string) {
+  const action = method === 'POST' ? 'UpdateValue' : 'GetValue';
+  const url = `${RELAY_BASE}/${action}/${APP_TOKEN}/${path}${value ? '/' + value : ''}`;
+  
+  const res = await fetch(url, { 
+    method: method,
+    mode: 'cors',
+    cache: 'no-store'
+  });
+
+  if (!res.ok) throw new Error(`Status_${res.status}`);
   return res;
 }
 
@@ -58,7 +67,7 @@ export function useGoldenBuddyStore() {
   const [syncStatus, setSyncStatus] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
   const [lastSync, setLastSync] = useState<number>(Date.now());
   const isSyncing = useRef(false);
-  const errorCount = useRef(0);
+  const consecutiveErrors = useRef(0);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -73,54 +82,67 @@ export function useGoldenBuddyStore() {
     const myArea = state.currentSession.areaId;
 
     try {
-      // 1. Presence & Directory
-      await api(`u${myId}/${Math.floor(Date.now()/1000)}`, 'POST');
-      const dirRes = await api(`d${myArea}`);
+      // 1. Heartbeat
+      await api(`u${myId}`, 'POST', `${Math.floor(Date.now()/1000)}`);
+
+      // 2. Directory Discovery
+      const dirRes = await api(`d${myArea}`, 'GET');
       const dirText = await dirRes.text();
-      let directory: string[] = JSON.parse(dirText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
+      let directory: string[] = [];
+      try {
+        directory = JSON.parse(dirText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
+      } catch (e) { directory = []; }
       
       if (!directory.includes(myId)) {
-        directory = [myId, ...directory].slice(0, 5);
-        await api(`d${myArea}/${encodeURIComponent(JSON.stringify(directory))}`, 'POST');
+        directory = [myId, ...directory.filter(id => id !== myId)].slice(0, 5);
+        await api(`d${myArea}`, 'POST', encodeURIComponent(JSON.stringify(directory)));
       }
 
-      // 2. Fetch Profiles in parallel (Original simple way)
+      // 3. Parallel Peer Sync with local error isolation
       const peerData = await Promise.all(directory.map(async (id) => {
         if (id === myId) return null;
         try {
-          const pRes = await api(`p${id}`);
-          return decodeData(await pRes.text());
-        } catch (e) { return null; }
+          // Check timestamp first to see if they are actually online (tiny request)
+          const hRes = await api(`u${id}`, 'GET');
+          const hText = (await hRes.text()).trim().replace(/^"(.*)"$/, '$1');
+          const ts = parseInt(hText, 10);
+          
+          if (!isNaN(ts) && (Math.floor(Date.now()/1000) - ts < 300)) {
+            const pRes = await api(`p${id}`, 'GET');
+            return decodeData(await pRes.text());
+          }
+        } catch (e) { /* ignore single peer failure */ }
+        return null;
       }));
       setRemotePeers(peerData.filter(Boolean) as Session[]);
 
-      // 3. Normalized Inbox Sync (Only fetching IDs first to keep URL tiny)
-      const inboxRes = await api(`i${myId}`);
+      // 4. Inbox Sync (Normalized)
+      const inboxRes = await api(`i${myId}`, 'GET');
       const inboxText = await inboxRes.text();
       const inviteIds: string[] = JSON.parse(inboxText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
       
       if (inviteIds.length > 0) {
         const fullInvites = await Promise.all(inviteIds.map(async (id) => {
           try {
-            const res = await api(`inv${id}`);
+            const res = await api(`inv${id}`, 'GET');
             return decodeData(await res.text());
           } catch (e) { return null; }
         }));
         
-        const validInvites = fullInvites.filter(Boolean) as Invite[];
+        const validOnes = fullInvites.filter(Boolean) as Invite[];
         setState(prev => {
-          const existingIds = prev.invites.map(i => i.id);
-          const newOnes = validInvites.filter(v => !existingIds.includes(v.id));
+          const knownIds = prev.invites.map(i => i.id);
+          const newOnes = validOnes.filter(v => !knownIds.includes(v.id));
           return newOnes.length > 0 ? { ...prev, invites: [...prev.invites, ...newOnes] } : prev;
         });
       }
 
       setSyncStatus('IDLE');
       setLastSync(Date.now());
-      errorCount.current = 0;
+      consecutiveErrors.current = 0;
     } catch (e: any) {
-      errorCount.current++;
-      if (errorCount.current > 2) setSyncStatus('ERROR');
+      consecutiveErrors.current++;
+      if (consecutiveErrors.current > 2) setSyncStatus('ERROR');
     } finally {
       isSyncing.current = false;
     }
@@ -128,7 +150,8 @@ export function useGoldenBuddyStore() {
 
   useEffect(() => {
     if (!state.currentSession) return;
-    const timer = setInterval(sync, 15000);
+    const interval = 15000;
+    const timer = setInterval(sync, interval);
     sync();
     return () => clearInterval(timer);
   }, [state.currentSession, sync]);
@@ -145,7 +168,7 @@ export function useGoldenBuddyStore() {
       inviteDuration: INVITE_DURATION_MS,
     };
     try {
-      await api(`p${s.id}/${encodeData(s)}`, 'POST');
+      await api(`p${s.id}`, 'POST', encodeData(s));
     } catch (e) {}
     setState(prev => ({ ...prev, currentSession: s, currentView: 'DASHBOARD' }));
   };
@@ -165,13 +188,11 @@ export function useGoldenBuddyStore() {
     setState(prev => ({ ...prev, invites: [...prev.invites, invite] }));
 
     try {
-      // 1. Save Invite Details separately (keeps URL short)
-      await api(`inv${invite.id}/${encodeData(invite)}`, 'POST');
-      // 2. Add ID to recipient's index
-      const res = await api(`i${toId}`);
+      await api(`inv${invite.id}`, 'POST', encodeData(invite));
+      const res = await api(`i${toId}`, 'GET');
       let index = JSON.parse((await res.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
       index = [invite.id, ...index].slice(0, 5);
-      await api(`i${toId}/${encodeURIComponent(JSON.stringify(index))}`, 'POST');
+      await api(`i${toId}`, 'POST', encodeURIComponent(JSON.stringify(index)));
     } catch (e) {}
   };
 
@@ -195,8 +216,7 @@ export function useGoldenBuddyStore() {
     }));
 
     try {
-      // Always store in the dedicated invite key
-      await api(`inv${inviteId}/${encodeData(updated)}`, 'POST');
+      await api(`inv${inviteId}`, 'POST', encodeData(updated));
       if (action === 'DECLINED') {
         setState(prev => ({ ...prev, invites: prev.invites.filter(i => i.id !== inviteId) }));
       }
