@@ -906,9 +906,14 @@
 
                 <!-- Meeting Spot -->
                 <div style="background:#E8F5E9;padding:16px;border-radius:12px;margin:16px 0">
-                    <h4 style="color:var(--online);margin:0 0 8px 0">📍 Meeting Spot</h4>
-                    <p id="meetingSpot" style="margin:0;font-size:18px;font-weight:bold">Arlington Central Library</p>
-                    <p style="margin:8px 0 0;font-size:14px;color:var(--text-secondary)">A safe, public place</p>
+                    <h4 style="color:var(--online);margin:0 0 12px 0">📍 Choose Meeting Spot</h4>
+                    
+                    <select id="meetingSpotSelect" onchange="updateMeetingSpot()" style="width:100%;padding:14px;font-size:16px;border-radius:10px;border:2px solid var(--primary);margin-bottom:8px">
+                        <option value="">Select a spot...</option>
+                    </select>
+                    
+                    <p id="meetingSpot" style="margin:0;font-size:18px;font-weight:bold">Select a spot above</p>
+                    <p style="margin:8px 0 0;font-size:14px;color:var(--text-secondary)">Pick a safe, public place you both know</p>
                 </div>
 
                 <!-- Action Buttons -->
@@ -1053,18 +1058,28 @@
                 'Arlington Central Library',
                 'Arlington Westover Library',
                 'Arlington Shirlington Library',
+                'Arlington Aurora Hills Library',
                 'Alexandria Central Library',
+                'Alexandria Beatley Library',
                 'Fairfax Regional Library',
                 'Fairfax City Library',
                 'Burke Centre Library',
                 'Reston Community Center',
+                'Reston Library',
                 'Vienna Community Center',
+                'Vienna Library',
+                'Falls Church Library',
+                'McLean Library',
+                'Herndon Library',
+                'Leesburg Library',
                 'Lubber Run Park',
                 'Walker Branch Park',
                 'Great Falls Park',
                 'Lake Fairfax Park',
                 'Clemyjontri Park',
-                ' Meadowlark Botanical Gardens'
+                'Meadowlark Botanical Gardens',
+                'Tysons Corner Center (Food Court)',
+                'Fair Oaks Mall (Food Court)'
             ],
             'MD': [
                 'Bethesda Library',
@@ -1075,7 +1090,9 @@
                 'Bowie Library',
                 'Wheaton Regional Park',
                 'Brookside Gardens',
-                'Lake Artemesia'
+                'Lake Artemesia',
+                'Montgomery Mall (Food Court)',
+                'White Oak Library'
             ],
             'DC': [
                 'Martin Luther King Jr. Library',
@@ -1084,7 +1101,9 @@
                 'Woodridge Library',
                 'Dupont Circle',
                 'The National Mall',
-                'Rock Creek Park'
+                'Rock Creek Park',
+                'Franklin Square Library',
+                'Tenleytown Library'
             ]
         };
 
@@ -1758,14 +1777,30 @@
             // Set color to look for
             document.getElementById('dailyColorText').textContent = color + ' icon';
             
-            // Get user's state for safe zones
+            // Populate meeting spots dropdown based on user's state
             const userState = state.userData?.state || 'VA';
             const spots = SAFE_ZONES[userState] || SAFE_ZONES['VA'];
-            const spot = spots[Math.floor(Math.random() * spots.length)];
-            document.getElementById('meetingSpot').textContent = spot;
+            const select = document.getElementById('meetingSpotSelect');
+            select.innerHTML = '<option value="">Select a meeting spot...</option>';
+            
+            spots.forEach(spot => {
+                const option = document.createElement('option');
+                option.value = spot;
+                option.textContent = spot;
+                select.appendChild(option);
+            });
+            
+            // Reset meeting spot text
+            document.getElementById('meetingSpot').textContent = 'Select a spot above';
             
             showView('connectionView');
             showNotification('🎉 Connected with ' + state.connection.name + '!\n\nLook for the ' + color + ' icon!', 'success');
+        }
+
+        function updateMeetingSpot() {
+            const select = document.getElementById('meetingSpotSelect');
+            const spot = select.value;
+            document.getElementById('meetingSpot').textContent = spot;
         }
 
         function textFamily() {
