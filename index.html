@@ -1024,17 +1024,24 @@
             return false;
         };
 
-        // ===== Firebase Configuration =====
-        // TODO: Replace with your Firebase config from https://console.firebase.google.com/
-        const firebaseConfig = {
-            apiKey: "AIzaSyBrwc2Ha0SsyvUs3-TuBPbGljQkFLu7Q8o",
-            authDomain: "goldenbuddy-test.firebaseapp.com",
-            databaseURL: "https://goldenbuddy-test-default-rtdb.firebaseio.com",
-            projectId: "goldenbuddy-test",
-            storageBucket: "goldenbuddy-test.firebasestorage.app",
-            messagingSenderId: "105279770899",
-            appId: "1:105279770899:web:4ab25dcb5700d66743cae6"
-        };
+        // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBrwc2Ha0SsyvUs3-TuBPbGljQkFLu7Q8o",
+  authDomain: "goldenbuddy-test.firebaseapp.com",
+  databaseURL: "https://goldenbuddy-test-default-rtdb.firebaseio.com",
+  projectId: "goldenbuddy-test",
+  storageBucket: "goldenbuddy-test.firebasestorage.app",
+  messagingSenderId: "105279770899",
+  appId: "1:105279770899:web:4ab25dcb5700d66743cae6"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 
         // Initialize Firebase (non-blocking)
         window.db = null;
@@ -1969,6 +1976,29 @@
                 }, (error) => {
                     console.error('Meeting spot listener error:', error);
                 });
+                
+                // Listen for connection ended by other user
+                window.db.ref('connections/' + connectionKey + '/endedBy').on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data && data.userId !== state.userId) {
+                        showNotification(buddyName + ' ended the connection', 'error');
+                        
+                        // Clean up
+                        if (state.meetingSpotListener) {
+                            window.db.ref('meetingSpots/' + connectionKey).off('value', state.meetingSpotListener);
+                            state.meetingSpotListener = null;
+                        }
+                        
+                        if (countdownInterval) {
+                            clearInterval(countdownInterval);
+                            countdownInterval = null;
+                        }
+                        
+                        state.connection = null;
+                        showView('dashboardView');
+                        renderNeighbors();
+                    }
+                });
             }
             
             showView('connectionView');
@@ -2136,11 +2166,23 @@
             const buddyId = state.connection?.buddyId;
             const buddyName = state.connection?.name;
             
-            // Clean up meeting spot listener
-            if (state.meetingSpotListener && window.db && buddyId) {
+            // Notify the other user that connection ended
+            if (window.db && buddyId) {
                 const connectionKey = [state.userId, buddyId].sort().join('_');
-                window.db.ref('meetingSpots/' + connectionKey).off('value', state.meetingSpotListener);
-                state.meetingSpotListener = null;
+                window.db.ref('connections/' + connectionKey + '/endedBy').set({
+                    userId: state.userId,
+                    name: state.userData.name,
+                    timestamp: Date.now()
+                });
+                
+                // Clean up meeting spot listener
+                if (state.meetingSpotListener) {
+                    window.db.ref('meetingSpots/' + connectionKey).off('value', state.meetingSpotListener);
+                    state.meetingSpotListener = null;
+                }
+                
+                // Clean up meeting spots data
+                window.db.ref('meetingSpots/' + connectionKey).remove();
             }
             
             // Stop countdown
@@ -2162,12 +2204,18 @@
             // Clear connection state completely
             state.connection = null;
             
-            // Reset UI elements
-            document.getElementById('timeSection').style.display = 'none';
-            document.getElementById('timeConfirmed').style.display = 'none';
-            document.getElementById('theirTime').style.display = 'none';
-            document.getElementById('theirSpotCard').style.display = 'none';
-            document.getElementById('acceptTheirSpot').style.display = 'none';
+            // Reset all UI elements
+            const timeSection = document.getElementById('timeSection');
+            const timeConfirmed = document.getElementById('timeConfirmed');
+            const theirTime = document.getElementById('theirTime');
+            const theirSpotCard = document.getElementById('theirSpotCard');
+            const acceptTheirSpot = document.getElementById('acceptTheirSpot');
+            
+            if (timeSection) timeSection.style.display = 'none';
+            if (timeConfirmed) timeConfirmed.style.display = 'none';
+            if (theirTime) theirTime.style.display = 'none';
+            if (theirSpotCard) theirSpotCard.style.display = 'none';
+            if (acceptTheirSpot) acceptTheirSpot.style.display = 'none';
             
             // Go back to dashboard
             showView('dashboardView');
