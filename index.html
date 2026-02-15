@@ -916,10 +916,59 @@
                     <p style="margin:8px 0 0;font-size:14px;color:var(--text-secondary)">Your buddy will see your choice</p>
                 </div>
                 
-                <!-- Their Meeting Spot -->
-                <div id="theirSpotCard" style="background:#FFF3E0;padding:16px;border-radius:12px;margin:16px 0;display:none">
-                    <h4 style="color:#E65100;margin:0 0 8px 0">👀 Buddy's Suggestion</h4>
-                    <p id="theirSpot" style="margin:0;font-size:16px">Waiting for buddy to pick...</p>
+                <!-- Meeting Spot Section -->
+                <div id="meetingSection">
+                    <!-- Your Spot -->
+                    <div style="background:#E8F5E9;padding:16px;border-radius:12px;margin:16px 0">
+                        <h4 style="color:var(--online);margin:0 0 12px 0">📍 Choose Meeting Spot</h4>
+                        
+                        <select id="meetingSpotSelect" onchange="updateMeetingSpot()" style="width:100%;padding:14px;font-size:16px;border-radius:10px;border:2px solid var(--primary);margin-bottom:8px">
+                            <option value="">Select a spot...</option>
+                        </select>
+                        
+                        <p id="meetingSpot" style="margin:0;font-size:18px;font-weight:bold">Select a spot above</p>
+                    </div>
+                    
+                    <!-- Their Spot -->
+                    <div id="theirSpotCard" style="background:#FFF3E0;padding:16px;border-radius:12px;margin:16px 0;display:none">
+                        <h4 style="color:#E65100;margin:0 0 8px 0">👀 Buddy's Suggestion</h4>
+                        <p id="theirSpot" style="margin:0;font-size:16px">Waiting for buddy to pick...</p>
+                        <button id="acceptTheirSpot" class="btn btn-accent btn-full" style="margin-top:12px;display:none" onclick="acceptTheirSpot()">✓ Accept This Spot</button>
+                    </div>
+                    
+                    <!-- Time Selection (shown after spot agreed) -->
+                    <div id="timeSection" style="display:none">
+                        <div style="background:#E3F2FD;padding:16px;border-radius:12px;margin:16px 0">
+                            <h4 style="color:#1976D2;margin:0 0 12px 0">⏰ Pick a Time</h4>
+                            
+                            <div style="display:flex;gap:8px;margin-bottom:12px">
+                                <select id="meetingHour" style="flex:1;padding:12px;font-size:16px;border-radius:8px">
+                                    <option value="">Hour</option>
+                                </select>
+                                <select id="meetingMinute" style="flex:1;padding:12px;font-size:16px;border-radius:8px">
+                                    <option value="">Min</option>
+                                </select>
+                                <select id="meetingAMPM" style="flex:1;padding:12px;font-size:16px;border-radius:8px">
+                                    <option value="AM">AM</option>
+                                    <option value="PM">PM</option>
+                                </select>
+                            </div>
+                            
+                            <button class="btn btn-primary btn-full" onclick="setMeetingTime()">Set Meeting Time</button>
+                        </div>
+                        
+                        <!-- Time Confirmation -->
+                        <div id="timeConfirmed" style="background:#4CAF50;color:white;padding:16px;border-radius:12px;margin:16px 0;display:none">
+                            <h4 style="margin:0 0 8px 0">✅ Meeting Set!</h4>
+                            <p id="confirmedTime" style="margin:0;font-size:20px;font-weight:bold"></p>
+                            <p id="countdown" style="margin:8px 0 0;font-size:24px;font-weight:bold"></p>
+                        </div>
+                        
+                        <!-- Buddy's Time -->
+                        <div id="theirTime" style="background:#FFF3E0;padding:16px;border-radius:12px;margin:16px 0;display:none">
+                            <p style="margin:0;font-size:16px" id="theirTimeText"></p>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Action Buttons -->
@@ -1158,10 +1207,15 @@
             const area = state.userData.area;
             state.neighborsRef = window.db.ref('presence').orderByChild('area').equalTo(area);
             state.neighborsRef.on('value', (snapshot) => {
+                const now = Date.now();
                 const neighbors = [];
                 snapshot.forEach((child) => {
                     if (child.key !== state.userId) {
-                        neighbors.push({ id: child.key, ...child.val() });
+                        const data = child.val();
+                        // Only show users who were seen in last 60 seconds
+                        if (data.lastSeen && (now - data.lastSeen < 65000)) {
+                            neighbors.push({ id: child.key, ...data });
+                        }
                     }
                 });
                 state.neighbors = neighbors;
@@ -1171,6 +1225,17 @@
             }, (error) => {
                 console.error("Listen error:", error);
             });
+
+            // Keep presence alive - update every 30 seconds
+            if (state.presenceInterval) clearInterval(state.presenceInterval);
+            state.presenceInterval = setInterval(() => {
+                if (state.presenceRef) {
+                    state.presenceRef.update({
+                        lastSeen: firebase.database.ServerValue.TIMESTAMP,
+                        online: true
+                    });
+                }
+            }, 30000);
 
             // Listen to invites
             if (window.db) {
@@ -1847,6 +1912,16 @@
                         Object.keys(data).forEach(key => {
                             if (key !== state.userId && data[key].spot) {
                                 document.getElementById('theirSpot').innerHTML = '<strong>' + data[key].name + ' suggests:</strong><br>📍 ' + data[key].spot;
+                                document.getElementById('theirSpotCard').style.display = 'block';
+                                document.getElementById('acceptTheirSpot').style.display = 'block';
+                                document.getElementById('timeSection').style.display = 'block';
+                                populateTimeSelects();
+                                
+                                // If they set a time, show it
+                                if (data[key].meetingTime) {
+                                    document.getElementById('theirTime').style.display = 'block';
+                                    document.getElementById('theirTimeText').textContent = data[key].name + ' set time: ' + data[key].meetingTimeString;
+                                }
                             }
                         });
                     }
@@ -1866,16 +1941,21 @@
             if (spot && state.connection && window.db) {
                 state.connection.meetingSpot = spot;
                 
-                // Use invites path to share meeting spot
                 const connectionKey = [state.userId, state.connection.buddyId].sort().join('_');
                 
-                // Save your spot choice
+                // Save your spot choice and reset time
                 window.db.ref('meetingSpots/' + connectionKey + '/' + state.userId).set({
                     spot: spot,
                     name: state.userData.name,
+                    spotAccepted: false,
+                    timeAccepted: false,
+                    meetingTime: null,
                     timestamp: Date.now()
                 }).then(() => {
                     showNotification('📍 Meeting spot shared!', 'success');
+                    // Show time section
+                    document.getElementById('timeSection').style.display = 'block';
+                    populateTimeSelects();
                 }).catch(err => {
                     console.error('Meeting spot error:', err);
                     showNotification('Could not share spot. Try again.', 'error');
@@ -1883,6 +1963,124 @@
             } else if (!window.db) {
                 showNotification('Database not connected', 'error');
             }
+        }
+
+        function populateTimeSelects() {
+            const hourSelect = document.getElementById('meetingHour');
+            const minuteSelect = document.getElementById('meetingMinute');
+            
+            hourSelect.innerHTML = '<option value="">Hour</option>';
+            minuteSelect.innerHTML = '<option value="">Min</option>';
+            
+            for (let i = 6; i <= 11; i++) {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = i;
+                hourSelect.appendChild(opt);
+            }
+            
+            for (let i = 0; i <= 55; i += 5) {
+                const opt = document.createElement('option');
+                opt.value = i.toString().padStart(2, '0');
+                opt.textContent = i.toString().padStart(2, '0');
+                minuteSelect.appendChild(opt);
+            }
+        }
+
+        function setMeetingTime() {
+            const hour = document.getElementById('meetingHour').value;
+            const minute = document.getElementById('meetingMinute').value;
+            const ampm = document.getElementById('meetingAMPM').value;
+            
+            if (!hour || !minute) {
+                showNotification('Please pick a time', 'error');
+                return;
+            }
+            
+            // Calculate meeting time
+            let hour24 = parseInt(hour);
+            if (ampm === 'PM' && hour24 !== 12) hour24 += 12;
+            if (ampm === 'AM' && hour24 === 12) hour24 = 0;
+            
+            const now = new Date();
+            let meetingTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour24, parseInt(minute), 0);
+            
+            // If time has passed today, set for tomorrow
+            if (meetingTime < now) {
+                meetingTime.setDate(meetingTime.getDate() + 1);
+            }
+            
+            const timeString = `${hour}:${minute} ${ampm}`;
+            const meetingTimestamp = meetingTime.getTime();
+            
+            // Save to Firebase
+            const connectionKey = [state.userId, state.connection.buddyId].sort().join('_');
+            
+            window.db.ref('meetingSpots/' + connectionKey + '/' + state.userId).update({
+                meetingTime: meetingTimestamp,
+                meetingTimeString: timeString,
+                timeAccepted: false
+            }).then(() => {
+                showNotification('⏰ Meeting time set!', 'success');
+                startCountdown(meetingTimestamp, timeString);
+            }).catch(err => {
+                console.error('Time error:', err);
+                showNotification('Could not set time', 'error');
+            });
+        }
+
+        let countdownInterval = null;
+
+        function startCountdown(meetingTimestamp, timeString) {
+            // Show confirmed time section
+            document.getElementById('timeConfirmed').style.display = 'block';
+            document.getElementById('confirmedTime').textContent = '📅 ' + timeString;
+            
+            if (countdownInterval) clearInterval(countdownInterval);
+            
+            countdownInterval = setInterval(() => {
+                const now = Date.now();
+                const diff = meetingTimestamp - now;
+                
+                if (diff <= 0) {
+                    document.getElementById('countdown').textContent = '🎉 Time to meet!';
+                    clearInterval(countdownInterval);
+                    return;
+                }
+                
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                
+                if (hours > 0) {
+                    document.getElementById('countdown').textContent = hours + 'h ' + minutes + 'm remaining';
+                } else {
+                    document.getElementById('countdown').textContent = minutes + ' minutes remaining';
+                }
+            }, 60000); // Update every minute
+            
+            // Initial update
+            const now = Date.now();
+            const diff = meetingTimestamp - now;
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            if (hours > 0) {
+                document.getElementById('countdown').textContent = hours + 'h ' + minutes + 'm remaining';
+            } else {
+                document.getElementById('countdown').textContent = minutes + ' minutes remaining';
+            }
+        }
+
+        function acceptTheirSpot() {
+            const spot = document.getElementById('theirSpot').textContent.replace('suggests:\n📍 ', '');
+            const connectionKey = [state.userId, state.connection.buddyId].sort().join('_');
+            
+            // Update to accept their spot
+            window.db.ref('meetingSpots/' + connectionKey + '/' + state.userId).update({
+                spotAccepted: true,
+                spot: spot
+            });
+            
+            showNotification('✅ Spot accepted!', 'success');
         }
 
         function textFamily() {
@@ -1894,10 +2092,9 @@
         function endConnection() {
             const buddyId = state.connection?.buddyId;
             const buddyName = state.connection?.name;
-            const connectedAt = state.connection?.connectedAt;
             
             // Update connection history
-            if (buddyId && state.connectionHistory.length > 0) {
+            if (buddyId && state.connectionHistory) {
                 const historyEntry = state.connectionHistory.find(h => h.buddyId === buddyId && !h.endedAt);
                 if (historyEntry) {
                     historyEntry.endedAt = Date.now();
@@ -1906,9 +2103,19 @@
                 }
             }
             
+            // Clear connection state completely
             state.connection = null;
             
+            // Reset UI elements
+            document.getElementById('timeSection').style.display = 'none';
+            document.getElementById('timeConfirmed').style.display = 'none';
+            document.getElementById('theirTime').style.display = 'none';
+            
+            // Go back to dashboard
             showView('dashboardView');
+            
+            // Refresh neighbors to update status
+            renderNeighbors();
             
             // Ask for rating
             if (buddyId) {
