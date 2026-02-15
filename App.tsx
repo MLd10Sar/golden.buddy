@@ -21,7 +21,8 @@ const App: React.FC = () => {
     respondToInvite, 
     resetApp, 
     updateAccessibility,
-    retrySync
+    retrySync,
+    updateInviteDuration
   } = useGoldenBuddyStore();
   
   const [tempName, setTempName] = useState('');
@@ -45,7 +46,7 @@ const App: React.FC = () => {
       case 'LOCATION': return <LocationPicker selectedArea={tempArea} onSelect={(area) => { setTempArea(area); setView('INTERESTS'); }} onBack={() => setView('NAME')} />;
       case 'INTERESTS': return <InterestPicker selectedInterests={tempInterests} onToggle={(interest) => { setTempInterests(prev => prev.includes(interest) ? prev.filter(i => i !== interest) : [...prev, interest]); }} onNext={() => createSession(tempName, tempArea!, tempInterests)} onBack={() => setView('LOCATION')} />;
       case 'DASHBOARD': return <Dashboard session={state.currentSession!} invites={state.invites} remotePeers={remotePeers} onSendInvite={sendInvite} onRespond={respondToInvite} onUpdateNote={()=>{}} onReset={resetApp} />;
-      case 'PROFILE': return <ProfileView session={state.currentSession!} onBack={() => setView('DASHBOARD')} onEditInterests={() => setView('INTERESTS')} onUpdateName={()=>{}} onReset={resetApp} onUpdateAccessibility={updateAccessibility} onUpdateInviteDuration={()=>{}} />;
+      case 'PROFILE': return <ProfileView session={state.currentSession!} onBack={() => setView('DASHBOARD')} onEditInterests={() => setView('INTERESTS')} onUpdateName={()=>{}} onReset={resetApp} onUpdateAccessibility={updateAccessibility} onUpdateInviteDuration={updateInviteDuration} />;
       default: return <WelcomeView onNext={() => setView('NAME')} />;
     }
   };
