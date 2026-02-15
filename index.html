@@ -1025,18 +1025,15 @@
         };
 
         // Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyBrwc2Ha0SsyvUs3-TuBPbGljQkFLu7Q8o",
-  authDomain: "goldenbuddy-test.firebaseapp.com",
-  databaseURL: "https://goldenbuddy-test-default-rtdb.firebaseio.com",
-  projectId: "goldenbuddy-test",
-  storageBucket: "goldenbuddy-test.firebasestorage.app",
-  messagingSenderId: "105279770899",
-  appId: "1:105279770899:web:4ab25dcb5700d66743cae6"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+        const firebaseConfig = {
+            apiKey: "AIzaSyBrwc2Ha0SsyvUs3-TuBPbGljQkFLu7Q8o",
+            authDomain: "goldenbuddy-test.firebaseapp.com",
+            databaseURL: "https://goldenbuddy-test-default-rtdb.firebaseio.com",
+            projectId: "goldenbuddy-test",
+            storageBucket: "goldenbuddy-test.firebasestorage.app",
+            messagingSenderId: "105279770899",
+            appId: "1:105279770899:web:4ab25dcb5700d66743cae6"
+        };
 
         // Initialize Firebase (non-blocking)
         window.db = null;
@@ -1046,33 +1043,9 @@ const app = initializeApp(firebaseConfig);
             console.log("Firebase connected!");
         } catch(e) {
             console.error("Firebase init failed:", e);
-            // Don't block the app - user can still use it
         }
 
-        // ===== State =====
-        let state = {
-            userId: null,
-            userData: null,
-            presenceRef: null,
-            presenceInterval: null,
-            neighborsRef: null,
-            invitesRef: null,
-            neighbors: [],
-            invites: [],
-            connection: null,
-            selectedNeighbor: null,
-            currentFilter: 'all',
-            pendingSafetyAction: null,
-            userStatus: 'Looking', // Looking, Busy, Away
-            userActivities: [], // Multiple activities
-            favorites: {}, // { neighborId: true }
-            privateNotes: {}, // { neighborId: "note text" }
-            ratings: {}, // { neighborId: { rating: 'good'|'bad', timestamp } }
-            connectionHistory: [], // [{ buddyId, buddyName, activity, connectedAt, endedAt }]
-            inboxTab: 'received',
-            meetingSpotListener: null
-        };
-
+        // Move constants here before any functions
         const AREAS_BY_STATE = {
             'VA': {
                 'arlington': 'Arlington',
@@ -1164,6 +1137,30 @@ const app = initializeApp(firebaseConfig);
                 'Franklin Square Library',
                 'Tenleytown Library'
             ]
+        };
+
+        // ===== State =====
+        let state = {
+            userId: null,
+            userData: null,
+            presenceRef: null,
+            presenceInterval: null,
+            neighborsRef: null,
+            invitesRef: null,
+            neighbors: [],
+            invites: [],
+            connection: null,
+            selectedNeighbor: null,
+            currentFilter: 'all',
+            pendingSafetyAction: null,
+            userStatus: 'Looking', // Looking, Busy, Away
+            userActivities: [], // Multiple activities
+            favorites: {}, // { neighborId: true }
+            privateNotes: {}, // { neighborId: "note text" }
+            ratings: {}, // { neighborId: { rating: 'good'|'bad', timestamp } }
+            connectionHistory: [], // [{ buddyId, buddyName, activity, connectedAt, endedAt }]
+            inboxTab: 'received',
+            meetingSpotListener: null
         };
 
         const COLORS = ['Blue', 'Red', 'Green', 'Purple', 'Orange', 'Pink', 'Teal', 'Gold'];
@@ -1308,20 +1305,27 @@ const app = initializeApp(firebaseConfig);
         }
 
         function updateAreas() {
+            console.log('updateAreas called');
             const stateSelect = document.getElementById('stateSelect');
             const areaSelect = document.getElementById('areaSelect');
             const selectedState = stateSelect.value;
             
+            console.log('Selected state:', selectedState);
+            console.log('AREAS_BY_STATE:', AREAS_BY_STATE);
+            
             areaSelect.innerHTML = '<option value="">Select area...</option>';
             
-            if (selectedState && AREAS_BY_STATE[selectedState]) {
+            if (selectedState && AREAS_BY_STATE && AREAS_BY_STATE[selectedState]) {
                 const areas = AREAS_BY_STATE[selectedState];
+                console.log('Found areas:', areas);
                 for (const [key, name] of Object.entries(areas)) {
                     const option = document.createElement('option');
                     option.value = selectedState + '|' + key;
                     option.textContent = name;
                     areaSelect.appendChild(option);
                 }
+            } else {
+                console.log('No areas found for state:', selectedState);
             }
         }
 
