@@ -1172,7 +1172,19 @@
                 const userData = JSON.parse(saved);
                 state.userId = userData.userId;
                 state.userData = userData;
+                
+                // Load other data
+                const savedData = localStorage.getItem('goldenbuddy_data');
+                if (savedData) {
+                    const data = JSON.parse(savedData);
+                    state.favorites = data.favorites || {};
+                    state.privateNotes = data.privateNotes || {};
+                    state.ratings = data.ratings || {};
+                    state.connectionHistory = data.connectionHistory || [];
+                }
+                
                 connectToFirebase();
+                showView('dashboardView');
             }
         }
 
@@ -1266,6 +1278,50 @@
                     }
                 }, (error) => {
                     console.error('Invites listener error:', error);
+                });
+            }
+            
+            // Listen for active connections (when someone accepts your invite)
+            if (window.db) {
+                window.db.ref('connections').orderByChild('user1').equalTo(state.userId).on('value', (snapshot) => {
+                    snapshot.forEach((child) => {
+                        const conn = child.val();
+                        if (conn.status === 'active' && conn.user2) {
+                            const buddyId = conn.user2;
+                            const buddyName = conn.user2Name;
+                            // Check if not already connected
+                            if (!state.connection || state.connection.buddyId !== buddyId) {
+                                state.connection = {
+                                    buddyId: buddyId,
+                                    name: buddyName,
+                                    activity: conn.activity,
+                                    connectedAt: conn.startedAt
+                                };
+                                renderNeighbors();
+                                showNotification('✅ ' + buddyName + ' accepted your invite!', 'success');
+                            }
+                        }
+                    });
+                });
+                
+                window.db.ref('connections').orderByChild('user2').equalTo(state.userId).on('value', (snapshot) => {
+                    snapshot.forEach((child) => {
+                        const conn = child.val();
+                        if (conn.status === 'active' && conn.user1) {
+                            const buddyId = conn.user1;
+                            const buddyName = conn.user1Name;
+                            // Check if not already connected
+                            if (!state.connection || state.connection.buddyId !== buddyId) {
+                                state.connection = {
+                                    buddyId: buddyId,
+                                    name: buddyName,
+                                    activity: conn.activity,
+                                    connectedAt: conn.startedAt
+                                };
+                                renderNeighbors();
+                            }
+                        }
+                    });
                 });
             }
         }
@@ -1850,10 +1906,24 @@
                 return;
             }
 
+            const connectionKey = [state.userId, fromId].sort().join('_');
+
             // Update both invites to accepted
             window.db.ref('invites/' + state.userId + '/' + key).update({ status: 'accepted' })
                 .then(() => {
                     return window.db.ref('invites/' + fromId + '/' + key).update({ status: 'accepted' });
+                })
+                .then(() => {
+                    // Create shared connection in Firebase so both users see it
+                    return window.db.ref('connections/' + connectionKey).set({
+                        user1: state.userId,
+                        user2: fromId,
+                        user1Name: state.userData.name,
+                        user2Name: fromName,
+                        status: 'active',
+                        activity: activity,
+                        startedAt: Date.now()
+                    });
                 })
                 .then(() => {
                     state.connection = { 
@@ -1875,7 +1945,6 @@
                     savePrivateData();
                     
                     closeInbox();
-                    // Go back to neighbors list instead of connection room
                     showView('dashboardView');
                     renderNeighbors();
                     showNotification('✅ Connected! You can now chat with ' + fromName, 'success');
