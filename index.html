@@ -1052,6 +1052,7 @@
             userId: null,
             userData: null,
             presenceRef: null,
+            presenceInterval: null,
             neighborsRef: null,
             invitesRef: null,
             neighbors: [],
@@ -1464,14 +1465,15 @@
                 const primaryActivity = activities[0];
                 const icon = activityIcons[primaryActivity] || '👤';
                 const isFav = state.favorites && state.favorites[n.id];
-                const hasNote = state.privateNotes && state.privateNotes[n.id];
                 
                 // Check invite status with this neighbor
                 const invites = state.invites || [];
                 const sentInvite = invites.find(i => i.toId === n.id && i.direction === 'sent');
                 const receivedInvite = invites.find(i => i.fromId === n.id && i.direction !== 'sent');
                 const isPending = sentInvite && sentInvite.status === 'pending';
-                const isConnected = (sentInvite && sentInvite.status === 'accepted') || (receivedInvite && receivedInvite.status === 'accepted');
+                
+                // Check if currently connected to this person
+                const isConnected = state.connection && state.connection.buddyId === n.id;
                 
                 // Get all icons for this neighbor
                 const activityBadges = activities.map(a => 
@@ -1480,26 +1482,28 @@
                 
                 let statusBadge = '';
                 let actionButton = '';
+                let cardColor = 'var(--primary)';
                 
                 if (isConnected) {
                     statusBadge = `<span style="background:#4CAF50;color:white;padding:2px 8px;border-radius:10px;font-size:11px">✅ Connected</span>`;
-                    actionButton = `<button class="btn btn-accent btn-small" style="padding:6px 12px;font-size:12px;background:#4CAF50" onclick="enterConnectionWith('${n.id}', '${n.name}', '${primaryActivity}')">💬 Chat</button>`;
+                    actionButton = `<button class="btn btn-accent btn-small" style="padding:6px 12px;font-size:12px;background:#4CAF50" onclick="enterConnectionWith('${n.id}', '${n.name}', '${primaryActivity}')">Chat</button>`;
+                    cardColor = '#4CAF50';
                 } else if (isPending) {
-                    statusBadge = `<span style="background:#FF9800;color:white;padding:2px 8px;border-radius:10px;font-size:11px">⏳ Waiting...</span>`;
+                    statusBadge = `<span style="background:#FF9800;color:white;padding:2px 8px;border-radius:10px;font-size:11px">⏳ Sent</span>`;
                     actionButton = `<button class="btn btn-outline btn-small" style="padding:6px 12px;font-size:12px" onclick="cancelInvite('${sentInvite.key}', '${n.id}')">Cancel</button>`;
+                    cardColor = '#FF9800';
                 } else {
                     statusBadge = `<span class="online-dot active"></span> Online now`;
                     actionButton = `<button class="btn btn-accent btn-small" style="padding:6px 12px;font-size:12px" onclick="openInviteModal('${n.id}', '${n.name}', '${primaryActivity}')">Invite</button>`;
                 }
                 
                 return `
-                <div class="neighbor-card" style="border-left: 4px solid ${isConnected ? '#4CAF50' : (isPending ? '#FF9800' : 'var(--primary)')}">
-                    <div class="neighbor-avatar" style="background:${isConnected ? '#4CAF50' : (isPending ? '#FF9800' : 'var(--primary)')};color:white;font-weight:bold">${icon}</div>
+                <div class="neighbor-card" style="border-left: 4px solid ${cardColor}">
+                    <div class="neighbor-avatar" style="background:${cardColor};color:white;font-weight:bold">${icon}</div>
                     <div class="neighbor-info">
                         <div class="neighbor-name" style="display:flex;align-items:center;gap:6px">
                             ${n.name}
                             ${isFav ? '<span style="color:#FFC107">⭐</span>' : ''}
-                            ${hasNote ? '<span style="color:#9C27B0;font-size:12px">📝</span>' : ''}
                         </div>
                         <div class="neighbor-activity" style="font-size:14px;color:var(--text-secondary)">
                             ${activityBadges}
@@ -1509,9 +1513,6 @@
                         </div>
                     </div>
                     <div style="display:flex;flex-direction:column;gap:4px">
-                        <button class="btn btn-small" style="padding:6px 12px;font-size:12px" onclick="toggleFavorite('${n.id}', '${n.name}')">
-                            ${isFav ? '⭐' : '☆'}
-                        </button>
                         ${actionButton}
                     </div>
                 </div>`;
@@ -1848,7 +1849,10 @@
                     savePrivateData();
                     
                     closeInbox();
-                    enterConnectionRoom();
+                    // Go back to neighbors list instead of connection room
+                    showView('dashboardView');
+                    renderNeighbors();
+                    showNotification('✅ Connected! You can now chat with ' + fromName, 'success');
                 })
                 .catch(err => {
                     console.error('Accept error:', err);
