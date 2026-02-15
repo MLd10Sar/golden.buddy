@@ -913,7 +913,13 @@
                     </select>
                     
                     <p id="meetingSpot" style="margin:0;font-size:18px;font-weight:bold">Select a spot above</p>
-                    <p style="margin:8px 0 0;font-size:14px;color:var(--text-secondary)">Pick a safe, public place you both know</p>
+                    <p style="margin:8px 0 0;font-size:14px;color:var(--text-secondary)">Your buddy will see your choice</p>
+                </div>
+                
+                <!-- Their Meeting Spot -->
+                <div id="theirSpotCard" style="background:#FFF3E0;padding:16px;border-radius:12px;margin:16px 0;display:none">
+                    <h4 style="color:#E65100;margin:0 0 8px 0">👀 Buddy's Suggestion</h4>
+                    <p id="theirSpot" style="margin:0;font-size:16px">Waiting for buddy to pick...</p>
                 </div>
 
                 <!-- Action Buttons -->
@@ -1167,26 +1173,32 @@
             });
 
             // Listen to invites
-            state.invitesRef = window.db.ref('invites/' + state.userId);
-            state.invitesRef.on('value', (snapshot) => {
-                const oldCount = state.invites.filter(i => i.status === 'pending' && i.direction !== 'sent').length;
-                const invites = [];
-                snapshot.forEach((child) => {
-                    invites.push({ key: child.key, ...child.val() });
-                });
-                state.invites = invites.sort((a,b) => b.timestamp - a.timestamp);
-                updateInviteCount();
-                
-                // Check for new invites
-                const newPendingCount = state.invites.filter(i => i.status === 'pending' && i.direction !== 'sent').length;
-                if (newPendingCount > oldCount) {
-                    const newInvites = state.invites.filter(i => i.status === 'pending' && i.direction !== 'sent');
-                    if (newInvites.length > 0) {
-                        const latestInvite = newInvites[0];
-                        showNotification(`📨 New invite from ${latestInvite.fromName}!`, 'invite');
+            if (window.db) {
+                state.invitesRef = window.db.ref('invites/' + state.userId);
+                state.invitesRef.on('value', (snapshot) => {
+                    const oldInvites = state.invites || [];
+                    const oldCount = oldInvites.filter(i => i.status === 'pending' && i.direction !== 'sent').length;
+                    
+                    const invites = [];
+                    snapshot.forEach((child) => {
+                        invites.push({ key: child.key, ...child.val() });
+                    });
+                    state.invites = invites.sort((a,b) => b.timestamp - a.timestamp);
+                    updateInviteCount();
+                    
+                    // Check for new invites
+                    const newPendingCount = (state.invites || []).filter(i => i.status === 'pending' && i.direction !== 'sent').length;
+                    if (newPendingCount > oldCount) {
+                        const newInvites = (state.invites || []).filter(i => i.status === 'pending' && i.direction !== 'sent');
+                        if (newInvites.length > 0) {
+                            const latestInvite = newInvites[0];
+                            showNotification(`📨 New invite from ${latestInvite.fromName}!`, 'invite');
+                        }
                     }
-                }
-            });
+                }, (error) => {
+                    console.error('Invites listener error:', error);
+                });
+            }
         }
 
         // ===== Navigation =====
@@ -1386,14 +1398,15 @@
                 const activities = n.activities || [n.activity];
                 const primaryActivity = activities[0];
                 const icon = activityIcons[primaryActivity] || '👤';
-                const isFav = state.favorites[n.id];
-                const hasNote = state.privateNotes[n.id];
+                const isFav = state.favorites && state.favorites[n.id];
+                const hasNote = state.privateNotes && state.privateNotes[n.id];
                 
                 // Check invite status with this neighbor
-                const sentInvite = state.invites.find(i => i.toId === n.id && i.direction === 'sent');
-                const receivedInvite = state.invites.find(i => i.fromId === n.id && i.direction !== 'sent');
-                const isPending = sentInvite?.status === 'pending';
-                const isConnected = (sentInvite?.status === 'accepted') || (receivedInvite?.status === 'accepted');
+                const invites = state.invites || [];
+                const sentInvite = invites.find(i => i.toId === n.id && i.direction === 'sent');
+                const receivedInvite = invites.find(i => i.fromId === n.id && i.direction !== 'sent');
+                const isPending = sentInvite && sentInvite.status === 'pending';
+                const isConnected = (sentInvite && sentInvite.status === 'accepted') || (receivedInvite && receivedInvite.status === 'accepted');
                 
                 // Get all icons for this neighbor
                 const activityBadges = activities.map(a => 
@@ -1538,14 +1551,15 @@
             const currentTab = tab || state.inboxTab || 'received';
             state.inboxTab = currentTab;
             
+            const invites = state.invites || [];
             let filtered = [];
             
             if (currentTab === 'received') {
-                filtered = state.invites.filter(i => i.direction !== 'sent');
+                filtered = invites.filter(i => i.direction !== 'sent');
             } else if (currentTab === 'sent') {
-                filtered = state.invites.filter(i => i.direction === 'sent');
+                filtered = invites.filter(i => i.direction === 'sent');
             } else if (currentTab === 'history') {
-                filtered = state.invites.filter(i => i.status === 'accepted' || i.status === 'declined');
+                filtered = invites.filter(i => i.status === 'accepted' || i.status === 'declined');
             }
             
             if (filtered.length === 0) {
@@ -1684,7 +1698,15 @@
         }
 
         function doSendInvite() {
-            if (!state.selectedNeighbor) return;
+            if (!state.selectedNeighbor) {
+                showNotification('No neighbor selected', 'error');
+                return;
+            }
+
+            if (!window.db) {
+                showNotification('Database not connected. Check your internet.', 'error');
+                return;
+            }
 
             const invite = {
                 fromId: state.userId,
@@ -1697,19 +1719,23 @@
             };
 
             const newRef = window.db.ref('invites/' + state.selectedNeighbor.id).push();
-            newRef.set(invite).then(() => {
-                window.db.ref('invites/' + state.userId + '/' + newRef.key).set({...invite, status: 'sent', direction: 'sent'});
-                
-                // Better feedback
-                closeInviteModal();
-                showNotification(`📨 Invite sent to ${state.selectedNeighbor.name}!\n\nWaiting for response...`, 'success');
-                
-                // Refresh neighbors to show "waiting" status
-                renderNeighbors();
-            }).catch(err => {
-                showNotification('Failed to send invite', 'error');
-                console.error(err);
-            });
+            newRef.set(invite)
+                .then(() => {
+                    // Also save to sender's sent folder
+                    return window.db.ref('invites/' + state.userId + '/' + newRef.key).set({...invite, status: 'sent', direction: 'sent'});
+                })
+                .then(() => {
+                    // Better feedback
+                    closeInviteModal();
+                    showNotification(`📨 Invite sent to ${state.selectedNeighbor.name}!\n\nWaiting for response...`, 'success');
+                    
+                    // Refresh neighbors to show "waiting" status
+                    renderNeighbors();
+                })
+                .catch(err => {
+                    console.error('Invite error:', err);
+                    showNotification('Failed to send invite. Try again.', 'error');
+                });
         }
 
         function cancelInvite(key, neighborId) {
@@ -1727,28 +1753,42 @@
         }
 
         function doAcceptInvite(key, fromId, fromName, activity) {
-            window.db.ref('invites/' + state.userId + '/' + key).update({ status: 'accepted' });
-            window.db.ref('invites/' + fromId + '/' + key).update({ status: 'accepted' });
+            if (!window.db) {
+                showNotification('Database not connected', 'error');
+                return;
+            }
 
-            state.connection = { 
-                buddyId: fromId, 
-                name: fromName, 
-                activity,
-                connectedAt: Date.now()
-            };
-            
-            // Add to connection history
-            const historyEntry = {
-                buddyId: fromId,
-                buddyName: fromName,
-                activity: activity,
-                connectedAt: Date.now(),
-                endedAt: null
-            };
-            state.connectionHistory.unshift(historyEntry);
-            savePrivateData();
-            
-            enterConnectionRoom();
+            // Update both invites to accepted
+            window.db.ref('invites/' + state.userId + '/' + key).update({ status: 'accepted' })
+                .then(() => {
+                    return window.db.ref('invites/' + fromId + '/' + key).update({ status: 'accepted' });
+                })
+                .then(() => {
+                    state.connection = { 
+                        buddyId: fromId, 
+                        name: fromName, 
+                        activity,
+                        connectedAt: Date.now()
+                    };
+                    
+                    // Add to connection history
+                    const historyEntry = {
+                        buddyId: fromId,
+                        buddyName: fromName,
+                        activity: activity,
+                        connectedAt: Date.now(),
+                        endedAt: null
+                    };
+                    state.connectionHistory.unshift(historyEntry);
+                    savePrivateData();
+                    
+                    closeInbox();
+                    enterConnectionRoom();
+                })
+                .catch(err => {
+                    console.error('Accept error:', err);
+                    showNotification('Failed to accept. Try again.', 'error');
+                });
         }
 
         function acceptInvite(key, fromId, fromName, activity) {
@@ -1792,6 +1832,26 @@
             
             // Reset meeting spot text
             document.getElementById('meetingSpot').textContent = 'Select a spot above';
+            document.getElementById('theirSpot').textContent = 'Waiting for buddy to pick...';
+            document.getElementById('theirSpotCard').style.display = 'block';
+            
+            // Listen for buddy's suggested spot
+            if (window.db && state.connection) {
+                const connectionKey = [state.userId, state.connection.buddyId].sort().join('_');
+                const buddySpotRef = window.db.ref('meetingSpots/' + connectionKey);
+                
+                buddySpotRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        // Find the buddy's spot (not yours)
+                        Object.keys(data).forEach(key => {
+                            if (key !== state.userId && data[key].spot) {
+                                document.getElementById('theirSpot').innerHTML = '<strong>' + data[key].name + ' suggests:</strong><br>📍 ' + data[key].spot;
+                            }
+                        });
+                    }
+                });
+            }
             
             showView('connectionView');
             showNotification('🎉 Connected with ' + state.connection.name + '!\n\nLook for the ' + color + ' icon!', 'success');
@@ -1801,6 +1861,28 @@
             const select = document.getElementById('meetingSpotSelect');
             const spot = select.value;
             document.getElementById('meetingSpot').textContent = spot;
+            
+            // Save to Firebase so the other person can see it
+            if (spot && state.connection && window.db) {
+                state.connection.meetingSpot = spot;
+                
+                // Use invites path to share meeting spot
+                const connectionKey = [state.userId, state.connection.buddyId].sort().join('_');
+                
+                // Save your spot choice
+                window.db.ref('meetingSpots/' + connectionKey + '/' + state.userId).set({
+                    spot: spot,
+                    name: state.userData.name,
+                    timestamp: Date.now()
+                }).then(() => {
+                    showNotification('📍 Meeting spot shared!', 'success');
+                }).catch(err => {
+                    console.error('Meeting spot error:', err);
+                    showNotification('Could not share spot. Try again.', 'error');
+                });
+            } else if (!window.db) {
+                showNotification('Database not connected', 'error');
+            }
         }
 
         function textFamily() {
