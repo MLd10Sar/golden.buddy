@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoldenBuddy - Connect with Neighbors</title>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        :root {
+            --primary: #2D5A4A;
+            --secondary: #F5E6D3;
+            --accent: #E8985E;
+            --background: #FFFDF9;
+            --text-primary: #1A1A1A;
+            --text-secondary: #5A5A5A;
+            --online: #4CAF50;
+            --offline: #9E9E9E;
+            --danger: #C62828;
+            --shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Nunito', sans-serif;
+            font-size: 18px;
+            line-height: 1.6;
+            background: var(--background);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .app-container {
+            max-width: 480px;
+            margin: 0 auto;
+            min-height: 100vh;
+            position: relative;
+            background: var(--background);
+        }
+
+        .view {
+            display: none;
+            padding: 24px;
+            min-height: 100vh;
+            animation: fadeIn 300ms ease;
+        }
+
+        .view.active { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h1 { font-size: 32px; font-weight: 800; color: var(--primary); margin-bottom: 16px; }
+        h2 { font-size: 24px; font-weight: 700; color: var(--primary); margin-bottom: 12px; }
+        h3 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+        p { margin-bottom: 16px; }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 16px 32px;
+            font-size: 20px;
+            font-weight: 700;
+            font-family: inherit;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 200ms ease;
+            text-decoration: none;
+        }
+
+        .btn:hover { transform: scale(1.02); }
+        .btn:active { transform: scale(0.98); }
+
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: #234a3c; }
+        .btn-accent { background: var(--accent); color: white; }
+        .btn-accent:hover { background: #d4864d; }
+        .btn-outline { background: transparent; border: 3px solid var(--primary); color: var(--primary); }
+        .btn-outline:hover { background: var(--primary); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-small { padding: 10px 20px; font-size: 16px; }
+        .btn-full { width: 100%; }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: var(--shadow);
+            margin-bottom: 16px;
+        }
+
+        .input-group { margin-bottom: 24px; }
+
+        label {
+            display: block;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+        }
+
+        input, select {
+            width: 100%;
+            padding: 16px;
+            font-size: 18px;
+            font-family: inherit;
+            border: 3px solid var(--secondary);
+            border-radius: 12px;
+            background: white;
+            color: var(--text-primary);
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 20px;
+            background: var(--danger);
+            color: white;
+        }
+
+        .online-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--offline);
+            display: inline-block;
+        }
+
+        .online-dot.active {
+            background: var(--online);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-bar {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: 480px;
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            padding: 12px 24px;
+            display: none;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            z-index: 100;
+        }
+
+        .status-bar.visible { display: flex; }
+
+        .activity-icons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-bottom: 24px;
+        }
+
+        .activity-btn {
+            flex: 1;
+            padding: 20px 12px;
+            font-size: 14px;
+            font-weight: 700;
+            font-family: inherit;
+            border: 3px solid var(--secondary);
+            border-radius: 16px;
+            background: white;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 200ms ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .activity-btn .icon { font-size: 28px; }
+        .activity-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .activity-btn.selected { background: var(--primary); border-color: var(--primary); color: white; }
+
+        .neighbor-card {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            margin-bottom: 12px;
+        }
+
+        .neighbor-avatar {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+        }
+
+        .neighbor-info { flex: 1; }
+        .neighbor-name { font-weight: 700; font-size: 18px; }
+        .neighbor-activity { font-size: 16px; color: var(--text-secondary); }
+        .neighbor-status { font-size: 14px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            background: var(--secondary);
+            padding: 6px;
+            border-radius: 10px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: inherit;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .tab.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            padding: 24px;
+        }
+
+        .modal-overlay.active { display: flex; }
+
+        .modal {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            max-width: 420px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+            animation: modalIn 300ms ease;
+        }
+
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal h2 { margin-bottom: 16px; }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .modal-actions .btn { flex: 1; }
+
+        .connection-room { text-align: center; }
+
+        .buddy-card {
+            background: white;
+            border-radius: 20px;
+            padding: 32px;
+            box-shadow: var(--shadow);
+            margin: 24px 0;
+        }
+
+        .buddy-emoji { font-size: 72px; margin-bottom: 16px; }
+        .buddy-name { font-size: 28px; font-weight: 800; color: var(--primary); }
+
+        .daily-color {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--secondary);
+            padding: 12px 24px;
+            border-radius: 30px;
+            margin-top: 16px;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .daily-color .color-swatch {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .welcome-logo { text-align: center; margin-bottom: 32px; }
+        .welcome-logo .emoji { font-size: 72px; margin-bottom: 16px; }
+        .welcome-logo h1 { font-size: 36px; }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            box-shadow: var(--shadow);
+        }
+
+        .feature-icon { font-size: 28px; }
+
+        .empty-state {
+            text-align: center;
+            padding: 32px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+
+        .section-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .notification {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: 420px;
+            width: calc(100% - 48px);
+            padding: 16px 24px;
+            background: var(--primary);
+            color: white;
+            border-radius: 12px;
+            font-weight: 600;
+            z-index: 300;
+            animation: slideUp 300ms ease;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translate(-50%, 20px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
+
+        .notification.error { background: var(--danger); }
+        .notification.success { background: var(--online); }
+        .notification.invite { background: var(--accent); }
+
+        .invite-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px;
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            box-shadow: var(--shadow);
+        }
+
+        .invite-item-info h4 { font-size: 18px; margin-bottom: 4px; }
+        .invite-item-info p { font-size: 14px; color: var(--text-secondary); margin: 0; }
+
+        .invite-actions { display: flex; gap: 8px; }
+
+        .history-item {
+            padding: 12px;
+            background: var(--secondary);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .history-item.sent { border-left: 4px solid var(--accent); }
+        .history-item.received { border-left: 4px solid var(--primary); }
+        .history-item .time { font-size: 12px; color: var(--text-secondary); }
+
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            margin-bottom: 16px;
+        }
+
+        .profile-avatar {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .profile-info h3 { margin: 0; font-size: 22px; }
+        .profile-info p { margin: 0; font-size: 14px; color: var(--text-secondary); }
+
+        .menu-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="status-bar" id="statusBar">
+            <div style="display:flex;align-items:center;gap:8px">
+                <span class="online-dot active" id="heartbeatDot"></span>
+                <span>Live</span>
+            </div>
+            <span id="currentArea">-</span>
+            <button class="menu-btn" onclick="showProfile()" style="background:none;border:none;color:white;font-size:20px">👤</button>
+        </div>
+
+        <!-- Welcome View -->
+        <div class="view active" id="welcomeView">
+            <div class="welcome-logo">
+                <div class="emoji">🌟</div>
+                <h1>GoldenBuddy</h1>
+                <p style="color:var(--text-secondary)">Connect with neighbors nearby</p>
+            </div>
+
+            <div class="feature-item">
+                <span class="feature-icon">🔒</span>
+                <div><strong>Private</strong><p style="margin:0;font-size:14px;color:var(--text-secondary)">No tracking, no GPS</p></div>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">🛡️</span>
+                <div><strong>Safe</strong><p style="margin:0;font-size:14px;color:var(--text-secondary)">Meet at public places</p></div>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">⚡</span>
+                <div><strong>Real-time</strong><p style="margin:0;font-size:14px;color:var(--text-secondary)">See who's online now</p></div>
+            </div>
+
+            <button class="btn btn-primary btn-full" onclick="goToSetup()">Get Started</button>
+        </div>
+
+        <!-- Setup View -->
+        <div class="view" id="setupView">
+            <h1>Create Profile</h1>
+            <p>Tell us about yourself</p>
+
+            <div class="input-group">
+                <label for="nameInput">Your Name</label>
+                <input type="text" id="nameInput" placeholder="Enter your name" maxlength="20">
+            </div>
+
+            <div class="input-group">
+                <label for="areaSelect">Your Area</label>
+                <select id="areaSelect">
+                    <option value="">Select area...</option>
+                    <option value="arlington">Arlington</option>
+                    <option value="alexandria">Alexandria</option>
+                    <option value="fairfax">Fairfax</option>
+                    <option value="falls-church">Falls Church</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label>What do you like to do?</label>
+                <div class="activity-icons">
+                    <button class="activity-btn" data-activity="Walking" onclick="selectActivity(this)">
+                        <span class="icon">🚶</span><span>Walking</span>
+                    </button>
+                    <button class="activity-btn" data-activity="Chess" onclick="selectActivity(this)">
+                        <span class="icon">♟️</span><span>Chess</span>
+                    </button>
+                    <button class="activity-btn" data-activity="Coffee" onclick="selectActivity(this)">
+                        <span class="icon">☕</span><span>Coffee</span>
+                    </button>
+                </div>
+            </div>
+
+            <button class="btn btn-primary btn-full" onclick="completeSetup()">Start Connecting</button>
+        </div>
+
+        <!-- Dashboard View -->
+        <div class="view" id="dashboardView">
+            <div class="header-row">
+                <h2>Neighbors</h2>
+                <div>
+                    <button class="btn btn-small btn-outline" onclick="showInbox()" style="padding:8px 16px">
+                        📬 <span id="inviteCount" class="badge" style="display:none">0</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" onclick="filterActivity('all',this)">All</button>
+                <button class="tab" onclick="filterActivity('Walking',this)">🚶</button>
+                <button class="tab" onclick="filterActivity('Chess',this)">♟️</button>
+                <button class="tab" onclick="filterActivity('Coffee',this)">☕</button>
+            </div>
+
+            <div id="neighborsList">
+                <div class="empty-state">
+                    <div class="icon">🔍</div>
+                    <p>Looking for neighbors...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inbox Modal -->
+        <div class="modal-overlay" id="inboxModal">
+            <div class="modal">
+                <h2>📬 Invites</h2>
+                <div id="invitesList"></div>
+                <div class="modal-actions">
+                    <button class="btn btn-outline btn-full" onclick="closeInbox()">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Safety Modal -->
+        <div class="modal-overlay" id="safetyModal">
+            <div class="modal">
+                <h2>🛡️ Safety First</h2>
+                
+                <div style="background:#FFF3E0;padding:16px;border-radius:12px;margin-bottom:16px">
+                    <p style="margin:0;font-weight:600;color:#E65100">Before you connect:</p>
+                </div>
+
+                <h3>✅ Always:</h3>
+                <ul style="margin-left:20px;margin-bottom:16px;font-size:16px">
+                    <li>Meet in public places (libraries, parks)</li>
+                    <li>Tell a family member where you're going</li>
+                    <li>Trust your instincts</li>
+                </ul>
+
+                <h3>⛔ Never:</h3>
+                <ul style="margin-left:20px;margin-bottom:16px;font-size:16px">
+                    <li>Share financial info</li>
+                    <li>Invite to home on first meet</li>
+                    <li>Accept rides from strangers</li>
+                </ul>
+
+                <h3>📍 Suggested Spots:</h3>
+                <div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">
+                    • Arlington Central Library<br>
+                    • Alexandria Library<br>
+                    • Lubber Run Park
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-outline btn-full" onclick="closeSafetyModal()">Cancel</button>
+                    <button class="btn btn-accent btn-full" id="safetyProceedBtn">I Understand, Continue</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Invite Modal -->
+        <div class="modal-overlay" id="inviteModal">
+            <div class="modal">
+                <h2>Send Invite</h2>
+                <div class="buddy-card" style="padding:24px;margin:16px 0">
+                    <div class="buddy-emoji" id="inviteBuddyEmoji">👤</div>
+                    <div class="buddy-name" id="inviteBuddyName">-</div>
+                    <p id="inviteBuddyActivity" style="margin:8px 0 0;color:var(--text-secondary)">-</p>
+                </div>
+                <p>Send invite for <strong id="inviteActivityName">-</strong>?</p>
+                <div class="modal-actions">
+                    <button class="btn btn-outline" onclick="closeInviteModal()">Cancel</button>
+                    <button class="btn btn-accent" onclick="showSafetyModal('send')">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile View -->
+        <div class="modal-overlay" id="profileModal">
+            <div class="modal">
+                <h2>👤 My Profile</h2>
+                
+                <div class="profile-header">
+                    <div class="profile-avatar" id="profileAvatar">A</div>
+                    <div class="profile-info">
+                        <h3 id="profileName">-</h3>
+                        <p id="profileArea">-</p>
+                    </div>
+                </div>
+
+                <h3>Invite History</h3>
+                <div id="historyList" style="max-height:200px;overflow-y:auto;margin-bottom:16px"></div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-outline btn-full" onclick="closeProfile()">Close</button>
+                    <button class="btn btn-danger btn-full" onclick="logout()">Sign Out</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Room -->
+        <div class="view" id="connectionView">
+            <div class="connection-room">
+                <h2>🎉 Connected!</h2>
+                
+                <div class="buddy-card">
+                    <div class="buddy-emoji" id="buddyEmoji">👤</div>
+                    <div class="buddy-name" id="buddyName">-</div>
+                    <p id="buddyActivity" style="margin:8px 0 0;color:var(--text-secondary)">-</p>
+                    
+                    <div class="daily-color">
+                        <span class="color-swatch" id="dailyColorSwatch"></span>
+                        <span id="dailyColorText">Look for: Blue</span>
+                    </div>
+                </div>
+
+                <div style="background:#E8F5E9;padding:16px;border-radius:12px;text-align:left;margin:16px 0">
+                    <h4 style="color:var(--online);margin-bottom:8px">📍 Suggested Meeting Spot</h4>
+                    <p id="meetingSpot" style="margin:0">Arlington Central Library</p>
+                </div>
+
+                <button class="btn btn-accent btn-full" onclick="textFamily()">📱 Text My Family</button>
+                <button class="btn btn-outline btn-full" style="margin-top:12px" onclick="endConnection()">End Connection</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notificationContainer"></div>
+
+    <script>
+        // ===== Firebase Configuration =====
+        // TODO: Replace with your Firebase config from https://console.firebase.google.com/
+        const firebaseConfig = {
+            apiKey: "AIzaSyBrwc2Ha0SsyvUs3-TuBPbGljQkFLu7Q8o",
+            authDomain: "goldenbuddy-test.firebaseapp.com",
+            databaseURL: "https://goldenbuddy-test-default-rtdb.firebaseio.com",
+            projectId: "goldenbuddy-test",
+            storageBucket: "goldenbuddy-test.firebasestorage.app",
+            messagingSenderId: "105279770899",
+            appId: "1:105279770899:web:4ab25dcb5700d66743cae6"
+        };
+
+        // Initialize Firebase
+        try {
+            firebase.initializeApp(firebaseConfig);
+            window.db = firebase.database();
+        } catch(e) {
+            console.error("Firebase init failed:", e);
+            alert("Firebase error: " + e.message + "\n\nCheck your Firebase config in console.firebase.google.com");
+        }
+
+        // ===== State =====
+        let state = {
+            userId: null,
+            userData: null,
+            presenceRef: null,
+            neighborsRef: null,
+            invitesRef: null,
+            neighbors: [],
+            invites: [],
+            connection: null,
+            selectedNeighbor: null,
+            currentFilter: 'all',
+            pendingSafetyAction: null
+        };
+
+        const SAFE_ZONES = [
+            'Arlington Central Library',
+            'Alexandria Library',
+            'Fairfax Regional Library',
+            'Lubber Run Park'
+        ];
+
+        const COLORS = ['Blue', 'Red', 'Green', 'Purple', 'Orange', 'Pink'];
+
+        // ===== Initialization =====
+        function init() {
+            const saved = localStorage.getItem('goldenbuddy_user');
+            if (saved) {
+                const userData = JSON.parse(saved);
+                state.userId = userData.userId;
+                state.userData = userData;
+                connectToFirebase();
+            }
+        }
+
+        function connectToFirebase() {
+            if (!state.userId) return;
+            if (!window.db) {
+                alert("Firebase not connected! Please check your config.");
+                return;
+            }
+
+            // Set presence
+            state.presenceRef = window.db.ref('presence/' + state.userId);
+            state.presenceRef.set({
+                name: state.userData.name,
+                area: state.userData.area,
+                activity: state.userData.activity,
+                color: getDailyColor(state.userId),
+                online: true,
+                lastSeen: firebase.database.ServerValue.TIMESTAMP
+            }).then(() => {
+                console.log("Presence set!");
+            }).catch(err => {
+                console.error("Firebase error:", err);
+                alert("Firebase error: " + err.message);
+            });
+            
+            state.presenceRef.onDisconnect().remove();
+
+            // Listen to area neighbors
+            const area = state.userData.area;
+            state.neighborsRef = window.db.ref('presence').orderByChild('area').equalTo(area);
+            state.neighborsRef.on('value', (snapshot) => {
+                const neighbors = [];
+                snapshot.forEach((child) => {
+                    if (child.key !== state.userId) {
+                        neighbors.push({ id: child.key, ...child.val() });
+                    }
+                });
+                state.neighbors = neighbors;
+                renderNeighbors();
+                document.getElementById('currentArea').textContent = area.charAt(0).toUpperCase() + area.slice(1);
+                document.getElementById('statusBar').classList.add('visible');
+            }, (error) => {
+                console.error("Listen error:", error);
+            });
+
+            // Listen to invites
+            state.invitesRef = window.db.ref('invites/' + state.userId);
+            state.invitesRef.on('value', (snapshot) => {
+                const invites = [];
+                snapshot.forEach((child) => {
+                    invites.push({ key: child.key, ...child.val() });
+                });
+                state.invites = invites.sort((a,b) => b.timestamp - a.timestamp);
+                updateInviteCount();
+            });
+        }
+
+        // ===== Navigation =====
+        function showView(viewId) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+        }
+
+        function goToSetup() { showView('setupView'); }
+
+        function completeSetup() {
+            const name = document.getElementById('nameInput').value.trim();
+            const area = document.getElementById('areaSelect').value;
+            
+            if (!name) { showNotification('Please enter your name', 'error'); return; }
+            if (!area) { showNotification('Please select your area', 'error'); return; }
+            if (!state.activity) { showNotification('Please select an activity', 'error'); return; }
+
+            state.userId = generateId();
+            state.userData = { userId: state.userId, name, area, activity: state.activity };
+            
+            localStorage.setItem('goldenbuddy_user', JSON.stringify(state.userData));
+            
+            connectToFirebase();
+            showView('dashboardView');
+            showNotification('Welcome, ' + name + '!', 'success');
+        }
+
+        function selectActivity(btn) {
+            document.querySelectorAll('.activity-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            state.activity = btn.dataset.activity;
+        }
+
+        // ===== Neighbors =====
+        function renderNeighbors() {
+            const container = document.getElementById('neighborsList');
+            let filtered = state.neighbors;
+
+            if (state.currentFilter !== 'all') {
+                filtered = filtered.filter(n => n.activity === state.currentFilter);
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">😔</div>
+                        <p>No neighbors online</p>
+                        <p style="font-size:14px">Share the app with friends!</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = filtered.map(n => `
+                <div class="neighbor-card">
+                    <div class="neighbor-avatar">${n.color}</div>
+                    <div class="neighbor-info">
+                        <div class="neighbor-name">${n.name}</div>
+                        <div class="neighbor-activity">🚶 ${n.activity || 'Looking around'}</div>
+                        <div class="neighbor-status">
+                            <span class="online-dot active"></span> Online now
+                        </div>
+                    </div>
+                    <button class="btn btn-accent btn-small" onclick="openInviteModal('${n.id}', '${n.name}', '${n.activity}')">
+                        Invite
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function filterActivity(activity, btn) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+            state.currentFilter = activity;
+            renderNeighbors();
+        }
+
+        // ===== Invites =====
+        function updateInviteCount() {
+            const pending = state.invites.filter(i => i.status === 'pending').length;
+            const badge = document.getElementById('inviteCount');
+            badge.textContent = pending;
+            badge.style.display = pending > 0 ? 'inline' : 'none';
+        }
+
+        function showInbox() {
+            renderInvites();
+            document.getElementById('inboxModal').classList.add('active');
+        }
+
+        function closeInbox() {
+            document.getElementById('inboxModal').classList.remove('active');
+        }
+
+        function renderInvites() {
+            const container = document.getElementById('invitesList');
+            
+            if (state.invites.length === 0) {
+                container.innerHTML = '<p class="empty-state">No invites yet</p>';
+                return;
+            }
+
+            container.innerHTML = state.invites.map(invite => `
+                <div class="invite-item">
+                    <div class="invite-item-info">
+                        <h4>${invite.fromName}</h4>
+                        <p>${invite.activity} • ${formatTime(invite.timestamp)}</p>
+                    </div>
+                    <div class="invite-actions">
+                        ${invite.status === 'pending' ? `
+                            <button class="btn btn-accent btn-small" onclick="showSafetyAccept('${invite.key}', '${invite.fromId}', '${invite.fromName}', '${invite.activity}')">Accept</button>
+                            <button class="btn btn-outline btn-small" onclick="declineInvite('${invite.key}')">Decline</button>
+                        ` : `
+                            <span class="badge">${invite.status}</span>
+                        `}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openInviteModal(id, name, activity) {
+            state.selectedNeighbor = { id, name, activity };
+            document.getElementById('inviteBuddyName').textContent = name;
+            document.getElementById('inviteBuddyActivity').textContent = 'Looking for: ' + (activity || 'activity');
+            document.getElementById('inviteActivityName').textContent = state.userData.activity;
+            document.getElementById('inviteModal').classList.add('active');
+        }
+
+        function closeInviteModal() {
+            document.getElementById('inviteModal').classList.remove('active');
+            state.selectedNeighbor = null;
+        }
+
+        // ===== Safety Modal =====
+        function showSafetyModal(mode) {
+            document.getElementById('inviteModal').classList.remove('active');
+            state.pendingSafetyAction = { mode: mode };
+            document.getElementById('safetyProceedBtn').onclick = handleSafetyProceed;
+            document.getElementById('safetyModal').classList.add('active');
+        }
+
+        function showSafetyAccept(key, fromId, fromName, activity) {
+            document.getElementById('inboxModal').classList.remove('active');
+            state.pendingSafetyAction = { 
+                mode: 'accept', 
+                key: key, 
+                fromId: fromId, 
+                fromName: fromName, 
+                activity: activity 
+            };
+            document.getElementById('safetyProceedBtn').onclick = handleSafetyProceed;
+            document.getElementById('safetyModal').classList.add('active');
+        }
+
+        function handleSafetyProceed() {
+            const action = state.pendingSafetyAction;
+            closeSafetyModal();
+            
+            if (action.mode === 'send') {
+                doSendInvite();
+            } else if (action.mode === 'accept') {
+                doAcceptInvite(action.key, action.fromId, action.fromName, action.activity);
+            }
+        }
+
+        function closeSafetyModal() {
+            document.getElementById('safetyModal').classList.remove('active');
+            state.pendingSafetyAction = null;
+        }
+
+        function doSendInvite() {
+            if (!state.selectedNeighbor) return;
+
+            const invite = {
+                fromId: state.userId,
+                fromName: state.userData.name,
+                toId: state.selectedNeighbor.id,
+                toName: state.selectedNeighbor.name,
+                activity: state.userData.activity,
+                status: 'pending',
+                timestamp: Date.now()
+            };
+
+            const newRef = window.db.ref('invites/' + state.selectedNeighbor.id).push();
+            newRef.set(invite).then(() => {
+                window.db.ref('invites/' + state.userId + '/' + newRef.key).set({...invite, status: 'sent', direction: 'sent'});
+                showNotification('Invite sent!', 'success');
+                closeInviteModal();
+            });
+        }
+
+        function doAcceptInvite(key, fromId, fromName, activity) {
+            window.db.ref('invites/' + state.userId + '/' + key).update({ status: 'accepted' });
+            window.db.ref('invites/' + fromId + '/' + key).update({ status: 'accepted' });
+
+            state.connection = { buddyId: fromId, name: fromName, activity };
+            enterConnectionRoom();
+        }
+
+        function acceptInvite(key, fromId, fromName, activity) {
+            // Now handled by showSafetyAccept - this is kept for compatibility
+            showSafetyAccept(key, fromId, fromName, activity);
+        }
+
+        function declineInvite(key) {
+            window.db.ref('invites/' + state.userId + '/' + key).update({ status: 'declined' });
+        }
+
+        // ===== Connection Room =====
+        function enterConnectionRoom() {
+            const color = getDailyColor(state.connection.buddyId);
+            
+            document.getElementById('buddyName').textContent = state.connection.name;
+            document.getElementById('buddyActivity').textContent = 'Activity: ' + state.connection.activity;
+            document.getElementById('dailyColorSwatch').style.background = color.toLowerCase();
+            document.getElementById('dailyColorText').textContent = 'Look for: ' + color;
+            
+            const spot = SAFE_ZONES[Math.floor(Math.random() * SAFE_ZONES.length)];
+            document.getElementById('meetingSpot').textContent = spot;
+            
+            showView('connectionView');
+            showNotification('Connected with ' + state.connection.name + '!', 'success');
+        }
+
+        function textFamily() {
+            const spot = document.getElementById('meetingSpot').textContent;
+            const message = `I have arrived at ${spot} for my GoldenBuddy ${state.connection.activity}.`;
+            window.location.href = `sms:?body=${encodeURIComponent(message)}`;
+        }
+
+        function endConnection() {
+            state.connection = null;
+            showView('dashboardView');
+        }
+
+        // ===== Profile =====
+        function showProfile() {
+            document.getElementById('profileAvatar').textContent = state.userData.name.charAt(0).toUpperCase();
+            document.getElementById('profileName').textContent = state.userData.name;
+            document.getElementById('profileArea').textContent = state.userData.area.charAt(0).toUpperCase() + state.userData.area.slice(1);
+            
+            renderHistory();
+            document.getElementById('profileModal').classList.add('active');
+        }
+
+        function closeProfile() {
+            document.getElementById('profileModal').classList.remove('active');
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('historyList');
+            
+            if (state.invites.length === 0) {
+                container.innerHTML = '<p style="color:var(--text-secondary)">No invite history yet</p>';
+                return;
+            }
+
+            container.innerHTML = state.invites.map(invite => `
+                <div class="history-item ${invite.direction || 'received'}">
+                    <div><strong>${invite.direction === 'sent' ? 'Sent to' : 'From'}: ${invite.direction === 'sent' ? invite.toName : invite.fromName}</strong></div>
+                    <div>${invite.activity} • <span class="time">${formatTime(invite.timestamp)}</span></div>
+                </div>
+            `).join('');
+        }
+
+        function logout() {
+            if (state.presenceRef) state.presenceRef.remove();
+            localStorage.removeItem('goldenbuddy_user');
+            location.reload();
+        }
+
+        // ===== Utilities =====
+        function generateId() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let id = '';
+            for (let i = 0; i < 5; i++) {
+                id += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return id;
+        }
+
+        function getDailyColor(userId) {
+            let hash = 0;
+            for (let i = 0; i < userId.length; i++) {
+                hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return COLORS[Math.abs(hash) % COLORS.length];
+        }
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            if (date.toDateString() === now.toDateString()) {
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+            return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        }
+
+        function showNotification(message, type = 'success') {
+            const container = document.getElementById('notificationContainer');
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            container.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+        }
+
+        init();
+    </script>
+</body>
+</html>
