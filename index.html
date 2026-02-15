@@ -695,6 +695,12 @@
     <div id="notificationContainer"></div>
 
     <script>
+        // Global error handler
+        window.onerror = function(msg, url, line) {
+            console.error("JS Error:", msg, "Line:", line);
+            return false;
+        };
+
         // ===== Firebase Configuration =====
         // TODO: Replace with your Firebase config from https://console.firebase.google.com/
         const firebaseConfig = {
@@ -707,13 +713,15 @@
             appId: "1:105279770899:web:4ab25dcb5700d66743cae6"
         };
 
-        // Initialize Firebase
+        // Initialize Firebase (non-blocking)
+        window.db = null;
         try {
             firebase.initializeApp(firebaseConfig);
             window.db = firebase.database();
+            console.log("Firebase connected!");
         } catch(e) {
             console.error("Firebase init failed:", e);
-            alert("Firebase error: " + e.message + "\n\nCheck your Firebase config in console.firebase.google.com");
+            // Don't block the app - user can still use it
         }
 
         // ===== State =====
@@ -811,8 +819,6 @@
         };
 
         const COLORS = ['Blue', 'Red', 'Green', 'Purple', 'Orange', 'Pink', 'Teal', 'Gold'];
-
-        const COLORS = ['Blue', 'Red', 'Green', 'Purple', 'Orange', 'Pink'];
 
         // ===== Initialization =====
         function init() {
