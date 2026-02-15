@@ -476,10 +476,14 @@
         <div class="status-bar" id="statusBar">
             <div style="display:flex;align-items:center;gap:8px">
                 <span class="online-dot active" id="heartbeatDot"></span>
-                <span>Live</span>
+                <span id="userStatus">Looking</span>
             </div>
             <span id="currentArea">-</span>
-            <button class="menu-btn" onclick="showProfile()" style="background:none;border:none;color:white;font-size:20px">👤</button>
+            <div style="display:flex;align-items:center;gap:8px">
+                <button onclick="refreshNeighbors()" style="background:none;border:none;color:white;font-size:16px" title="Refresh">🔄</button>
+                <button onclick="toggleStatus()" id="statusToggle" style="background:#4CAF50;border:none;color:white;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:bold" title="Toggle status">🟢</button>
+                <button class="menu-btn" onclick="showProfile()" style="background:none;border:none;color:white;font-size:20px">👤</button>
+            </div>
         </div>
 
         <!-- Welcome View -->
@@ -655,12 +659,60 @@
                     </div>
                 </div>
 
+                <button class="btn btn-outline btn-full" onclick="showEditProfile()" style="margin-bottom:16px">✏️ Edit Profile</button>
+
                 <h3>Invite History</h3>
-                <div id="historyList" style="max-height:200px;overflow-y:auto;margin-bottom:16px"></div>
+                <div id="historyList" style="max-height:150px;overflow-y:auto;margin-bottom:16px"></div>
 
                 <div class="modal-actions">
                     <button class="btn btn-outline btn-full" onclick="closeProfile()">Close</button>
                     <button class="btn btn-danger btn-full" onclick="logout()">Sign Out</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Profile Modal -->
+        <div class="modal-overlay" id="editProfileModal">
+            <div class="modal">
+                <h2>✏️ Edit Profile</h2>
+                
+                <div class="input-group">
+                    <label>Your Name</label>
+                    <input type="text" id="editNameInput" maxlength="20">
+                </div>
+
+                <div class="input-group">
+                    <label>Your State</label>
+                    <select id="editStateSelect" onchange="updateEditAreas()">
+                        <option value="VA">Virginia</option>
+                        <option value="MD">Maryland</option>
+                        <option value="DC">Washington D.C.</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label>Your Area</label>
+                    <select id="editAreaSelect"></select>
+                </div>
+
+                <div class="input-group">
+                    <label>What do you like to do?</label>
+                    <div class="activity-icons" id="editActivityIcons">
+                        <button class="activity-btn" data-activity="Walking" onclick="selectEditActivity(this)">
+                            <span class="icon">🚶</span><span>Walking</span>
+                        </button>
+                        <button class="activity-btn" data-activity="Chess" onclick="selectEditActivity(this)">
+                            <span class="icon">♟️</span><span>Chess</span>
+                        </button>
+                        <button class="activity-btn" data-activity="Coffee" onclick="selectEditActivity(this)">
+                            <span class="icon">☕</span><span>Coffee</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-outline" onclick="closeEditProfile()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveEditProfile()">Save</button>
                 </div>
             </div>
         </div>
@@ -736,7 +788,8 @@
             connection: null,
             selectedNeighbor: null,
             currentFilter: 'all',
-            pendingSafetyAction: null
+            pendingSafetyAction: null,
+            userStatus: 'Looking' // Looking, Busy, Away
         };
 
         const AREAS_BY_STATE = {
@@ -843,8 +896,11 @@
             state.presenceRef.set({
                 name: state.userData.name,
                 area: state.userData.area,
+                areaName: state.userData.areaName,
+                state: state.userData.state,
                 activity: state.userData.activity,
                 color: getDailyColor(state.userId),
+                status: state.userStatus,
                 online: true,
                 lastSeen: firebase.database.ServerValue.TIMESTAMP
             }).then(() => {
@@ -951,6 +1007,49 @@
             state.activity = btn.dataset.activity;
         }
 
+        // ===== Status Toggle =====
+        function toggleStatus() {
+            const statuses = ['Looking', 'Busy', 'Away'];
+            const currentIndex = statuses.indexOf(state.userStatus);
+            state.userStatus = statuses[(currentIndex + 1) % statuses.length];
+            
+            const statusBtn = document.getElementById('statusToggle');
+            const statusLabel = document.getElementById('userStatus');
+            
+            const statusConfig = {
+                'Looking': { color: '#4CAF50', emoji: '🟢', label: 'Looking' },
+                'Busy': { color: '#F44336', emoji: '🔴', label: 'Busy' },
+                'Away': { color: '#FFC107', emoji: '🟡', label: 'Away' }
+            };
+            
+            const config = statusConfig[state.userStatus];
+            statusBtn.style.background = config.color;
+            statusBtn.textContent = config.emoji;
+            statusLabel.textContent = config.label;
+            
+            // Update Firebase presence
+            if (state.presenceRef) {
+                state.presenceRef.update({ status: state.userStatus });
+            }
+        }
+
+        // ===== Manual Refresh =====
+        function refreshNeighbors() {
+            if (state.neighborsRef) {
+                state.neighborsRef.once('value', (snapshot) => {
+                    const neighbors = [];
+                    snapshot.forEach((child) => {
+                        if (child.key !== state.userId) {
+                            neighbors.push({ id: child.key, ...child.val() });
+                        }
+                    });
+                    state.neighbors = neighbors;
+                    renderNeighbors();
+                    showNotification('Refreshed!', 'success');
+                });
+            }
+        }
+
         // ===== Neighbors =====
         function renderNeighbors() {
             const container = document.getElementById('neighborsList');
@@ -1025,25 +1124,45 @@
                 return;
             }
 
-            container.innerHTML = state.invites.map(invite => `
-                <div class="invite-item">
+            container.innerHTML = state.invites.map(invite => {
+                const isSent = invite.direction === 'sent';
+                const otherName = isSent ? invite.toName : invite.fromName;
+                const statusClass = invite.status === 'accepted' ? 'accepted' : (invite.status === 'declined' ? 'declined' : 'pending');
+                
+                return `
+                <div class="invite-item ${statusClass}" style="${isSent ? 'border-left-color: var(--primary)' : ''}">
                     <div class="invite-item-info">
-                        <h4>${invite.fromName}</h4>
+                        <h4>${isSent ? 'Sent to: ' : 'From: '}${otherName}</h4>
                         <p>${invite.activity} • ${formatTime(invite.timestamp)}</p>
                     </div>
                     <div class="invite-actions">
-                        ${invite.status === 'pending' ? `
+                        ${!isSent && invite.status === 'pending' ? `
                             <button class="btn btn-accent btn-small" onclick="showSafetyAccept('${invite.key}', '${invite.fromId}', '${invite.fromName}', '${invite.activity}')">Accept</button>
                             <button class="btn btn-outline btn-small" onclick="declineInvite('${invite.key}')">Decline</button>
                         ` : `
-                            <span class="badge">${invite.status}</span>
+                            <span class="badge">${invite.status === 'accepted' ? '✅ Connected' : invite.status}</span>
                         `}
                     </div>
-                </div>
-            `).join('');
+                </div>`;
+            }).join('');
         }
 
         function openInviteModal(id, name, activity) {
+            // Check if already connected or pending
+            const existingInvite = state.invites.find(invite => 
+                (invite.fromId === id || invite.toId === id) && 
+                (invite.status === 'pending' || invite.status === 'accepted')
+            );
+            
+            if (existingInvite) {
+                if (existingInvite.status === 'accepted') {
+                    showNotification('You are already connected with ' + name, 'error');
+                } else {
+                    showNotification('Invite already sent to ' + name, 'error');
+                }
+                return;
+            }
+            
             state.selectedNeighbor = { id, name, activity };
             document.getElementById('inviteBuddyName').textContent = name;
             document.getElementById('inviteBuddyActivity').textContent = 'Looking for: ' + (activity || 'activity');
@@ -1187,6 +1306,90 @@
 
         function closeProfile() {
             document.getElementById('profileModal').classList.remove('active');
+        }
+
+        function showEditProfile() {
+            document.getElementById('profileModal').classList.remove('active');
+            
+            document.getElementById('editNameInput').value = state.userData.name;
+            document.getElementById('editStateSelect').value = state.userData.state || 'VA';
+            updateEditAreas();
+            document.getElementById('editAreaSelect').value = state.userData.state + '|' + (state.userData.area.split('|')[1] || state.userData.area);
+            
+            // Set current activity
+            document.querySelectorAll('#editActivityIcons .activity-btn').forEach(b => {
+                b.classList.remove('selected');
+                if (b.dataset.activity === state.userData.activity) {
+                    b.classList.add('selected');
+                }
+            });
+            
+            document.getElementById('editProfileModal').classList.add('active');
+        }
+
+        function updateEditAreas() {
+            const stateSelect = document.getElementById('editStateSelect');
+            const areaSelect = document.getElementById('editAreaSelect');
+            const selectedState = stateSelect.value;
+            
+            areaSelect.innerHTML = '';
+            
+            if (selectedState && AREAS_BY_STATE[selectedState]) {
+                const areas = AREAS_BY_STATE[selectedState];
+                for (const [key, name] of Object.entries(areas)) {
+                    const option = document.createElement('option');
+                    option.value = selectedState + '|' + key;
+                    option.textContent = name;
+                    areaSelect.appendChild(option);
+                }
+            }
+        }
+
+        function selectEditActivity(btn) {
+            document.querySelectorAll('#editActivityIcons .activity-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+        }
+
+        function saveEditProfile() {
+            const name = document.getElementById('editNameInput').value.trim();
+            const areaValue = document.getElementById('editAreaSelect').value;
+            
+            if (!name) { showNotification('Please enter your name', 'error'); return; }
+            if (!areaValue) { showNotification('Please select your area', 'error'); return; }
+            
+            const selectedActivityBtn = document.querySelector('#editActivityIcons .activity-btn.selected');
+            const activity = selectedActivityBtn ? selectedActivityBtn.dataset.activity : state.userData.activity;
+            
+            const [stateCode, areaKey] = areaValue.split('|');
+            const areaName = AREAS_BY_STATE[stateCode]?.[areaKey] || areaValue;
+            
+            // Update user data
+            state.userData.name = name;
+            state.userData.state = stateCode;
+            state.userData.area = areaValue;
+            state.userData.areaName = areaName;
+            state.userData.activity = activity;
+            
+            localStorage.setItem('goldenbuddy_user', JSON.stringify(state.userData));
+            
+            // Update Firebase presence
+            if (state.presenceRef) {
+                state.presenceRef.update({
+                    name: name,
+                    state: stateCode,
+                    area: areaValue,
+                    areaName: areaName,
+                    activity: activity
+                });
+            }
+            
+            closeEditProfile();
+            showProfile();
+            showNotification('Profile updated!', 'success');
+        }
+
+        function closeEditProfile() {
+            document.getElementById('editProfileModal').classList.remove('active');
         }
 
         function renderHistory() {
