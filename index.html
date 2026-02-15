@@ -1067,7 +1067,8 @@
             privateNotes: {}, // { neighborId: "note text" }
             ratings: {}, // { neighborId: { rating: 'good'|'bad', timestamp } }
             connectionHistory: [], // [{ buddyId, buddyName, activity, connectedAt, endedAt }]
-            inboxTab: 'received'
+            inboxTab: 'received',
+            meetingSpotListener: null
         };
 
         const AREAS_BY_STATE = {
@@ -1251,6 +1252,9 @@
                     });
                     state.invites = invites.sort((a,b) => b.timestamp - a.timestamp);
                     updateInviteCount();
+                    
+                    // Re-render neighbors to update status badges
+                    renderNeighbors();
                     
                     // Check for new invites
                     const newPendingCount = (state.invites || []).filter(i => i.status === 'pending' && i.direction !== 'sent').length;
@@ -1785,22 +1789,38 @@
             };
 
             const newRef = window.db.ref('invites/' + state.selectedNeighbor.id).push();
-            newRef.set(invite)
+            const inviteKey = newRef.key;
+            
+            // First save to receiver
+            window.db.ref('invites/' + state.selectedNeighbor.id + '/' + inviteKey).set(invite)
                 .then(() => {
-                    // Also save to sender's sent folder
-                    return window.db.ref('invites/' + state.userId + '/' + newRef.key).set({...invite, status: 'sent', direction: 'sent'});
+                    // Then save to sender
+                    return window.db.ref('invites/' + state.userId + '/' + inviteKey).set({
+                        ...invite, 
+                        status: 'sent', 
+                        direction: 'sent',
+                        key: inviteKey
+                    });
                 })
                 .then(() => {
+                    // Add to local state immediately
+                    state.invites.push({
+                        ...invite,
+                        key: inviteKey,
+                        status: 'sent',
+                        direction: 'sent'
+                    });
+                    
                     // Better feedback
                     closeInviteModal();
-                    showNotification(`📨 Invite sent to ${state.selectedNeighbor.name}!\n\nWaiting for response...`, 'success');
+                    showNotification(`📨 Invite sent to ${state.selectedNeighbor.name}!`, 'success');
                     
                     // Refresh neighbors to show "waiting" status
                     renderNeighbors();
                 })
                 .catch(err => {
                     console.error('Invite error:', err);
-                    showNotification('Failed to send invite. Try again.', 'error');
+                    showNotification('Failed to send invite. Check connection.', 'error');
                 });
         }
 
@@ -1907,28 +1927,47 @@
             // Listen for buddy's suggested spot
             if (window.db && state.connection) {
                 const connectionKey = [state.userId, state.connection.buddyId].sort().join('_');
-                const buddySpotRef = window.db.ref('meetingSpots/' + connectionKey);
                 
-                buddySpotRef.on('value', (snapshot) => {
+                // Clean up old listener if exists
+                if (state.meetingSpotListener) {
+                    window.db.ref('meetingSpots/' + connectionKey).off('value', state.meetingSpotListener);
+                }
+                
+                state.meetingSpotListener = window.db.ref('meetingSpots/' + connectionKey).on('value', (snapshot) => {
                     const data = snapshot.val();
+                    console.log('Meeting spots data:', data);
+                    
                     if (data) {
                         // Find the buddy's spot (not yours)
                         Object.keys(data).forEach(key => {
-                            if (key !== state.userId && data[key].spot) {
-                                document.getElementById('theirSpot').innerHTML = '<strong>' + data[key].name + ' suggests:</strong><br>📍 ' + data[key].spot;
-                                document.getElementById('theirSpotCard').style.display = 'block';
-                                document.getElementById('acceptTheirSpot').style.display = 'block';
-                                document.getElementById('timeSection').style.display = 'block';
-                                populateTimeSelects();
+                            if (key !== state.userId && data[key]) {
+                                const buddyData = data[key];
+                                console.log('Buddy data:', buddyData);
+                                
+                                if (buddyData.spot) {
+                                    document.getElementById('theirSpot').innerHTML = '<strong>' + buddyData.name + ' suggests:</strong><br>📍 ' + buddyData.spot;
+                                    document.getElementById('theirSpotCard').style.display = 'block';
+                                    document.getElementById('acceptTheirSpot').style.display = 'block';
+                                    document.getElementById('timeSection').style.display = 'block';
+                                    populateTimeSelects();
+                                }
                                 
                                 // If they set a time, show it
-                                if (data[key].meetingTime) {
+                                if (buddyData.meetingTime && buddyData.meetingTimeString) {
                                     document.getElementById('theirTime').style.display = 'block';
-                                    document.getElementById('theirTimeText').textContent = data[key].name + ' set time: ' + data[key].meetingTimeString;
+                                    document.getElementById('theirTimeText').textContent = buddyData.name + ' set time: ' + buddyData.meetingTimeString;
+                                    
+                                    // If you haven't set a time, show their countdown too
+                                    const myData = data[state.userId];
+                                    if (!myData || !myData.meetingTime) {
+                                        startCountdown(buddyData.meetingTime, buddyData.meetingTimeString);
+                                    }
                                 }
                             }
                         });
                     }
+                }, (error) => {
+                    console.error('Meeting spot listener error:', error);
                 });
             }
             
@@ -2097,6 +2136,19 @@
             const buddyId = state.connection?.buddyId;
             const buddyName = state.connection?.name;
             
+            // Clean up meeting spot listener
+            if (state.meetingSpotListener && window.db && buddyId) {
+                const connectionKey = [state.userId, buddyId].sort().join('_');
+                window.db.ref('meetingSpots/' + connectionKey).off('value', state.meetingSpotListener);
+                state.meetingSpotListener = null;
+            }
+            
+            // Stop countdown
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            
             // Update connection history
             if (buddyId && state.connectionHistory) {
                 const historyEntry = state.connectionHistory.find(h => h.buddyId === buddyId && !h.endedAt);
@@ -2114,6 +2166,8 @@
             document.getElementById('timeSection').style.display = 'none';
             document.getElementById('timeConfirmed').style.display = 'none';
             document.getElementById('theirTime').style.display = 'none';
+            document.getElementById('theirSpotCard').style.display = 'none';
+            document.getElementById('acceptTheirSpot').style.display = 'none';
             
             // Go back to dashboard
             showView('dashboardView');
