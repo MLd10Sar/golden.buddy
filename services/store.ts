@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, Session, Invite, View, AreaId, Interest, AccessibilitySettings } from '../types';
 import { STORAGE_KEY, INVITE_DURATION_MS, AREAS } from '../constants';
@@ -17,7 +18,7 @@ const DEFAULT_ACCESSIBILITY: AccessibilitySettings = {
 
 // RELAY CONFIG
 const RELAY_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
-const APP_TOKEN = 'gb_stable_v6'; 
+const APP_TOKEN = 'gb_v7_final'; 
 
 const encodeData = (obj: any) => {
   try {
@@ -35,20 +36,64 @@ const decodeData = (base64: string) => {
 };
 
 /**
- * Robust API helper with correct HTTP methods
+ * Sequential request queue to avoid NetworkError/Parallel limits
+ */
+const requestQueue: (() => Promise<any>)[] = [];
+let isProcessingQueue = false;
+
+async function processQueue() {
+  if (isProcessingQueue || requestQueue.length === 0) return;
+  isProcessingQueue = true;
+  while (requestQueue.length > 0) {
+    const task = requestQueue.shift();
+    if (task) {
+      try {
+        await task();
+      } catch (e) {
+        console.warn("Queue task failed:", e);
+      }
+      // Small breather between requests
+      await new Promise(r => setTimeout(r, 100));
+    }
+  }
+  isProcessingQueue = false;
+}
+
+function queueRequest<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    requestQueue.push(async () => {
+      try {
+        const result = await task();
+        resolve(result);
+      } catch (e) {
+        reject(e);
+      }
+    });
+    processQueue();
+  });
+}
+
+/**
+ * Extremely robust API call
  */
 async function api(path: string, method: 'GET' | 'POST' = 'GET', value?: string) {
-  const action = method === 'POST' ? 'UpdateValue' : 'GetValue';
-  const url = `${RELAY_BASE}/${action}/${APP_TOKEN}/${path}${value ? '/' + value : ''}`;
-  
-  const res = await fetch(url, { 
-    method: method,
-    mode: 'cors',
-    cache: 'no-store'
+  return queueRequest(async () => {
+    const action = method === 'POST' ? 'UpdateValue' : 'GetValue';
+    // Use encodeURIComponent ONLY for the value part to handle special chars in Base64
+    const url = `${RELAY_BASE}/${action}/${APP_TOKEN}/${path}${value ? '/' + encodeURIComponent(value) : ''}`;
+    
+    try {
+      const res = await fetch(url, { 
+        method: method,
+        mode: 'cors',
+        cache: 'no-store'
+      });
+      if (!res.ok) throw new Error(`HTTP_${res.status}`);
+      return res;
+    } catch (e) {
+      throw e;
+    }
   });
-
-  if (!res.ok) throw new Error(`Status_${res.status}`);
-  return res;
 }
 
 export function useGoldenBuddyStore() {
@@ -82,10 +127,10 @@ export function useGoldenBuddyStore() {
     const myArea = state.currentSession.areaId;
 
     try {
-      // 1. Heartbeat
+      // 1. Heartbeat - Essential
       await api(`u${myId}`, 'POST', `${Math.floor(Date.now()/1000)}`);
 
-      // 2. Directory Discovery
+      // 2. Directory - Essential
       const dirRes = await api(`d${myArea}`, 'GET');
       const dirText = await dirRes.text();
       let directory: string[] = [];
@@ -95,44 +140,46 @@ export function useGoldenBuddyStore() {
       
       if (!directory.includes(myId)) {
         directory = [myId, ...directory.filter(id => id !== myId)].slice(0, 5);
-        await api(`d${myArea}`, 'POST', encodeURIComponent(JSON.stringify(directory)));
+        await api(`d${myArea}`, 'POST', JSON.stringify(directory));
       }
 
-      // 3. Parallel Peer Sync with local error isolation
-      const peerData = await Promise.all(directory.map(async (id) => {
-        if (id === myId) return null;
+      // 3. Profiles - Process one by one to avoid bursts
+      const activePeers: Session[] = [];
+      for (const id of directory) {
+        if (id === myId) continue;
         try {
-          // Check timestamp first to see if they are actually online (tiny request)
+          // Check timestamp
           const hRes = await api(`u${id}`, 'GET');
           const hText = (await hRes.text()).trim().replace(/^"(.*)"$/, '$1');
           const ts = parseInt(hText, 10);
           
-          if (!isNaN(ts) && (Math.floor(Date.now()/1000) - ts < 300)) {
+          if (!isNaN(ts) && (Math.floor(Date.now()/1000) - ts < 600)) {
             const pRes = await api(`p${id}`, 'GET');
-            return decodeData(await pRes.text());
+            const p = decodeData(await pRes.text());
+            if (p) activePeers.push(p);
           }
         } catch (e) { /* ignore single peer failure */ }
-        return null;
-      }));
-      setRemotePeers(peerData.filter(Boolean) as Session[]);
+      }
+      setRemotePeers(activePeers);
 
-      // 4. Inbox Sync (Normalized)
+      // 4. Inbox
       const inboxRes = await api(`i${myId}`, 'GET');
       const inboxText = await inboxRes.text();
       const inviteIds: string[] = JSON.parse(inboxText.trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
       
       if (inviteIds.length > 0) {
-        const fullInvites = await Promise.all(inviteIds.map(async (id) => {
+        const validInvites: Invite[] = [];
+        for (const id of inviteIds) {
           try {
             const res = await api(`inv${id}`, 'GET');
-            return decodeData(await res.text());
-          } catch (e) { return null; }
-        }));
+            const data = decodeData(await res.text());
+            if (data) validInvites.push(data);
+          } catch (e) {}
+        }
         
-        const validOnes = fullInvites.filter(Boolean) as Invite[];
         setState(prev => {
           const knownIds = prev.invites.map(i => i.id);
-          const newOnes = validOnes.filter(v => !knownIds.includes(v.id));
+          const newOnes = validInvites.filter(v => !knownIds.includes(v.id));
           return newOnes.length > 0 ? { ...prev, invites: [...prev.invites, ...newOnes] } : prev;
         });
       }
@@ -141,8 +188,10 @@ export function useGoldenBuddyStore() {
       setLastSync(Date.now());
       consecutiveErrors.current = 0;
     } catch (e: any) {
+      console.warn("Sync error:", e);
       consecutiveErrors.current++;
-      if (consecutiveErrors.current > 2) setSyncStatus('ERROR');
+      // Only show error if multiple heartbeats fail
+      if (consecutiveErrors.current > 3) setSyncStatus('ERROR');
     } finally {
       isSyncing.current = false;
     }
@@ -150,7 +199,7 @@ export function useGoldenBuddyStore() {
 
   useEffect(() => {
     if (!state.currentSession) return;
-    const interval = 15000;
+    const interval = 12000;
     const timer = setInterval(sync, interval);
     sync();
     return () => clearInterval(timer);
@@ -192,10 +241,11 @@ export function useGoldenBuddyStore() {
       const res = await api(`i${toId}`, 'GET');
       let index = JSON.parse((await res.text()).trim().replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') || "[]");
       index = [invite.id, ...index].slice(0, 5);
-      await api(`i${toId}`, 'POST', encodeURIComponent(JSON.stringify(index)));
+      await api(`i${toId}`, 'POST', JSON.stringify(index));
     } catch (e) {}
   };
 
+  // Fixed missing implementation of respondToInvite
   const respondToInvite = async (inviteId: string, action: 'ACCEPTED' | 'DECLINED') => {
     const invite = state.invites.find(i => i.id === inviteId);
     if (!invite || !state.currentSession) return;
@@ -203,11 +253,11 @@ export function useGoldenBuddyStore() {
     let updated = { ...invite, status: action, respondedAt: Date.now() };
 
     if (action === 'ACCEPTED') {
-      const area = AREAS.find(a => a.id === state.currentSession?.areaId)?.name || 'local area';
-      try {
-        const spot = await getSmartMeetingSpot(area, invite.activity);
-        if (spot) updated.aiSuggestedSpot = JSON.stringify(spot);
-      } catch (e) {}
+      const area = AREAS.find(a => a.id === state.currentSession?.areaId);
+      const activity = invite.activity;
+      // Get smart meeting spot using Gemini search grounding
+      const spot = await getSmartMeetingSpot(area?.name || "the local area", activity);
+      updated.aiSuggestedSpot = JSON.stringify(spot);
     }
 
     setState(prev => ({
@@ -217,20 +267,57 @@ export function useGoldenBuddyStore() {
 
     try {
       await api(`inv${inviteId}`, 'POST', encodeData(updated));
-      if (action === 'DECLINED') {
-        setState(prev => ({ ...prev, invites: prev.invites.filter(i => i.id !== inviteId) }));
-      }
     } catch (e) {}
   };
 
+  // Added missing setView function
+  const setView = (view: View) => setState(prev => ({ ...prev, currentView: view }));
+
+  // Added missing updateAccessibility function
+  const updateAccessibility = (settings: Partial<AccessibilitySettings>) => {
+    if (!state.currentSession) return;
+    const updated = {
+      ...state.currentSession,
+      accessibility: { ...state.currentSession.accessibility, ...settings }
+    };
+    setState(prev => ({ ...prev, currentSession: updated }));
+    api(`p${updated.id}`, 'POST', encodeData(updated)).catch(() => {});
+  };
+
+  // Added missing resetApp function
+  const resetApp = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    setState(initialState);
+  };
+
+  // Added missing retrySync function
+  const retrySync = () => {
+    consecutiveErrors.current = 0;
+    setSyncStatus('IDLE');
+    sync();
+  };
+
+  // Added missing updateInviteDuration function
+  const updateInviteDuration = (durationMs: number) => {
+    if (!state.currentSession) return;
+    const updated = { ...state.currentSession, inviteDuration: durationMs };
+    setState(prev => ({ ...prev, currentSession: updated }));
+    api(`p${updated.id}`, 'POST', encodeData(updated)).catch(() => {});
+  };
+
+  // Crucial: return the object expected by App.tsx
   return {
-    state, remotePeers, syncStatus, lastSync,
-    setView: (v: View) => setState(prev => ({ ...prev, currentView: v })),
-    createSession, sendInvite, respondToInvite,
-    resetApp: () => { localStorage.clear(); window.location.reload(); },
-    updateAccessibility: (s: Partial<AccessibilitySettings>) => {
-      setState(prev => prev.currentSession ? { ...prev, currentSession: { ...prev.currentSession, accessibility: { ...prev.currentSession.accessibility, ...s } } } : prev);
-    },
-    retrySync: sync
+    state,
+    remotePeers,
+    syncStatus,
+    lastSync,
+    setView,
+    createSession,
+    sendInvite,
+    respondToInvite,
+    resetApp,
+    updateAccessibility,
+    retrySync,
+    updateInviteDuration
   };
 }
