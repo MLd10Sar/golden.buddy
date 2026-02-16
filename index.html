@@ -677,6 +677,13 @@
                     <p>Looking for neighbors...</p>
                 </div>
             </div>
+
+            <!-- Feedback Button -->
+            <div style="position:fixed;bottom:80px;right:24px;z-index:90">
+                <button class="btn" style="background:#9C27B0;color:white;border-radius:50%;width:56px;height:56px;padding:0;font-size:24px;box-shadow:0 4px 12px rgba(0,0,0,0.3)" onclick="showFeedbackModal()" title="Send Feedback">
+                    💬
+                </button>
+            </div>
         </div>
 
         <!-- Inbox Modal -->
@@ -999,6 +1006,42 @@
                     </button>
                 </div>
                 <button class="btn btn-outline btn-full" onclick="closeRatingModal()">Skip</button>
+            </div>
+        </div>
+
+        <!-- Feedback Modal -->
+        <div class="modal-overlay" id="feedbackModal">
+            <div class="modal">
+                <h2>💬 Send Us Feedback</h2>
+                <p style="color:var(--text-secondary);margin-bottom:16px">Help us improve GoldenBuddy! Tell us what you think.</p>
+                
+                <div class="input-group">
+                    <label>How would you rate your experience?</label>
+                    <div style="display:flex;gap:8px;margin-top:8px">
+                        <button type="button" class="feedback-rating" data-rating="5" onclick="selectFeedbackRating(5)" style="flex:1;padding:12px;border:2px solid var(--secondary);border-radius:8px;background:white;font-size:24px;cursor:pointer">😍</button>
+                        <button type="button" class="feedback-rating" data-rating="4" onclick="selectFeedbackRating(4)" style="flex:1;padding:12px;border:2px solid var(--secondary);border-radius:8px;background:white;font-size:24px;cursor:pointer">😊</button>
+                        <button type="button" class="feedback-rating" data-rating="3" onclick="selectFeedbackRating(3)" style="flex:1;padding:12px;border:2px solid var(--secondary);border-radius:8px;background:white;font-size:24px;cursor:pointer">😐</button>
+                        <button type="button" class="feedback-rating" data-rating="2" onclick="selectFeedbackRating(2)" style="flex:1;padding:12px;border:2px solid var(--secondary);border-radius:8px;background:white;font-size:24px;cursor:pointer">😕</button>
+                        <button type="button" class="feedback-rating" data-rating="1" onclick="selectFeedbackRating(1)" style="flex:1;padding:12px;border:2px solid var(--secondary);border-radius:8px;background:white;font-size:24px;cursor:pointer">😢</button>
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label for="feedbackText">Your feedback (optional)</label>
+                    <textarea id="feedbackText" placeholder="Tell us what you like or what we can improve..." style="width:100%;padding:12px;font-size:16px;border:2px solid var(--secondary);border-radius:8px;min-height:100px;font-family:inherit;resize:vertical"></textarea>
+                </div>
+                
+                <div class="input-group">
+                    <label>
+                        <input type="checkbox" id="feedbackContact" style="margin-right:8px">
+                        You can contact me about my feedback
+                    </label>
+                </div>
+                
+                <div class="modal-actions">
+                    <button class="btn btn-outline" onclick="closeFeedbackModal()">Cancel</button>
+                    <button class="btn btn-primary" id="submitFeedbackBtn" onclick="submitFeedback()" disabled>Send Feedback</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1691,6 +1734,95 @@
 
         function closeRatingModal() {
             document.getElementById('ratingModal').classList.remove('active');
+        }
+
+        // ===== Feedback System =====
+        let selectedRating = 0;
+
+        function showFeedbackModal() {
+            selectedRating = 0;
+            document.getElementById('feedbackText').value = '';
+            document.getElementById('feedbackContact').checked = false;
+            document.getElementById('submitFeedbackBtn').disabled = true;
+            
+            // Reset all rating buttons
+            document.querySelectorAll('.feedback-rating').forEach(btn => {
+                btn.style.background = 'white';
+                btn.style.borderColor = 'var(--secondary)';
+            });
+            
+            document.getElementById('feedbackModal').classList.add('active');
+        }
+
+        function selectFeedbackRating(rating) {
+            selectedRating = rating;
+            
+            // Update button styles
+            document.querySelectorAll('.feedback-rating').forEach(btn => {
+                const btnRating = parseInt(btn.dataset.rating);
+                if (btnRating === rating) {
+                    btn.style.background = '#E3F2FD';
+                    btn.style.borderColor = '#1976D2';
+                } else {
+                    btn.style.background = 'white';
+                    btn.style.borderColor = 'var(--secondary)';
+                }
+            });
+            
+            // Enable submit button
+            document.getElementById('submitFeedbackBtn').disabled = false;
+        }
+
+        function submitFeedback() {
+            if (selectedRating === 0) {
+                showNotification('Please select a rating', 'error');
+                return;
+            }
+            
+            const feedbackText = document.getElementById('feedbackText').value.trim();
+            const canContact = document.getElementById('feedbackContact').checked;
+            
+            const feedback = {
+                userId: state.userId || 'anonymous',
+                userName: state.userData?.name || 'Anonymous',
+                rating: selectedRating,
+                text: feedbackText,
+                canContact: canContact,
+                timestamp: Date.now(),
+                userAgent: navigator.userAgent,
+                url: window.location.href
+            };
+            
+            // Save to Firebase
+            if (window.db) {
+                window.db.ref('feedback').push(feedback)
+                    .then(() => {
+                        closeFeedbackModal();
+                        showNotification('✅ Thank you for your feedback! We appreciate it.', 'success');
+                    })
+                    .catch(err => {
+                        console.error('Feedback error:', err);
+                        // Save locally as fallback
+                        saveFeedbackLocally(feedback);
+                        closeFeedbackModal();
+                        showNotification('✅ Feedback saved! We appreciate it.', 'success');
+                    });
+            } else {
+                // Save locally if no Firebase
+                saveFeedbackLocally(feedback);
+                closeFeedbackModal();
+                showNotification('✅ Feedback saved! We appreciate it.', 'success');
+            }
+        }
+
+        function saveFeedbackLocally(feedback) {
+            const existingFeedback = JSON.parse(localStorage.getItem('goldenbuddy_feedback') || '[]');
+            existingFeedback.push(feedback);
+            localStorage.setItem('goldenbuddy_feedback', JSON.stringify(existingFeedback));
+        }
+
+        function closeFeedbackModal() {
+            document.getElementById('feedbackModal').classList.remove('active');
         }
 
         function filterActivity(activity, btn) {
