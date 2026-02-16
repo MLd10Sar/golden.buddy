@@ -1790,6 +1790,12 @@
         }
 
         function openInviteModal(id, name, activity) {
+            // Check if currently connected to this person
+            if (state.connection && state.connection.buddyId === id) {
+                showNotification('You are currently connected with ' + name + '. End the connection first.', 'error');
+                return;
+            }
+            
             // Check if already connected or pending
             const existingInvite = state.invites.find(invite => 
                 (invite.fromId === id || invite.toId === id) && 
@@ -1799,10 +1805,13 @@
             if (existingInvite) {
                 if (existingInvite.status === 'accepted') {
                     showNotification('You are already connected with ' + name, 'error');
+                } else if (existingInvite.status === 'completed') {
+                    // Allow re-inviting after connection completed
+                    // Continue to invite modal
                 } else {
                     showNotification('Invite already sent to ' + name, 'error');
+                    return;
                 }
-                return;
             }
             
             state.selectedNeighbor = { id, name, activity };
@@ -1892,6 +1901,9 @@
             const newRef = window.db.ref('invites/' + state.selectedNeighbor.id).push();
             const inviteKey = newRef.key;
             
+            // Show sending feedback immediately
+            showNotification('📨 Sending invite...', 'success');
+            
             // First save to receiver
             window.db.ref('invites/' + state.selectedNeighbor.id + '/' + inviteKey).set(invite)
                 .then(() => {
@@ -1912,9 +1924,9 @@
                         direction: 'sent'
                     });
                     
-                    // Better feedback
+                    // Success feedback
                     closeInviteModal();
-                    showNotification(`📨 Invite sent to ${state.selectedNeighbor.name}!`, 'success');
+                    showNotification(`✅ Invite sent to ${state.selectedNeighbor.name}!`, 'success');
                     
                     // Refresh neighbors to show "waiting" status
                     renderNeighbors();
@@ -2299,6 +2311,21 @@
                     },
                     endedAt: Date.now()
                 });
+                
+                // Update invite status to 'completed' so they can reconnect later
+                if (buddyId) {
+                    const invite = state.invites.find(i => 
+                        (i.fromId === buddyId || i.toId === buddyId) && 
+                        i.status === 'accepted'
+                    );
+                    if (invite && invite.key) {
+                        // Update both sides
+                        window.db.ref('invites/' + state.userId + '/' + invite.key).update({ status: 'completed' });
+                        window.db.ref('invites/' + buddyId + '/' + invite.key).update({ status: 'completed' });
+                        // Update local state
+                        invite.status = 'completed';
+                    }
+                }
                 
                 // Clean up meeting spot listener
                 if (state.meetingSpotListener) {
