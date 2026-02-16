@@ -488,6 +488,7 @@
             </div>
             <span id="currentArea">-</span>
             <div style="display:flex;align-items:center;gap:8px">
+                <button onclick="showEmergencyModal()" style="background:#C62828;border:none;color:white;padding:6px 12px;border-radius:20px;font-size:12px;font-weight:bold;display:flex;align-items:center;gap:4px" title="Emergency">🚨 Emergency</button>
                 <button onclick="refreshNeighbors()" style="background:none;border:none;color:white;font-size:16px" title="Refresh">🔄</button>
                 <button onclick="toggleStatus()" id="statusToggle" style="background:#4CAF50;border:none;color:white;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:bold" title="Toggle status">🟢</button>
                 <button class="menu-btn" onclick="showProfile()" style="background:none;border:none;color:white;font-size:20px">👤</button>
@@ -1041,6 +1042,71 @@
                 <div class="modal-actions">
                     <button class="btn btn-outline" onclick="closeFeedbackModal()">Cancel</button>
                     <button class="btn btn-primary" id="submitFeedbackBtn" onclick="submitFeedback()" disabled>Send Feedback</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Emergency Modal -->
+        <div class="modal-overlay" id="emergencyModal">
+            <div class="modal" style="border:4px solid #C62828">
+                <div style="text-align:center;margin-bottom:20px">
+                    <div style="font-size:64px">🚨</div>
+                    <h2 style="color:#C62828;margin:0">Emergency</h2>
+                    <p style="color:#C62828;font-weight:bold;margin:8px 0 0">Are you in danger?</p>
+                </div>
+                
+                <div style="background:#FFEBEE;padding:16px;border-radius:12px;margin-bottom:20px;border-left:4px solid #C62828">
+                    <p style="margin:0;font-size:16px"><strong>If this is a life-threatening emergency:</strong></p>
+                    <p style="margin:8px 0 0;font-size:20px;color:#C62828;font-weight:bold">Call 911 immediately</p>
+                </div>
+
+                <div style="margin-bottom:20px">
+                    <button class="btn btn-full" style="background:#C62828;color:white;padding:20px;font-size:20px;margin-bottom:12px" onclick="callEmergency()">
+                        📞 Call 911
+                    </button>
+                    
+                    <button class="btn btn-full" style="background:#FF9800;color:white;padding:16px;font-size:18px;margin-bottom:12px" onclick="textEmergencyContact()">
+                        📱 Text Emergency Contact
+                    </button>
+                    
+                    <button class="btn btn-full" style="background:#2196F3;color:white;padding:16px;font-size:18px" onclick="callEmergencyContact()">
+                        📞 Call Emergency Contact
+                    </button>
+                </div>
+
+                <div style="background:#FFF3E0;padding:12px;border-radius:8px;margin-bottom:20px">
+                    <p style="margin:0;font-size:14px"><strong>Your Location:</strong> <span id="emergencyLocation">Getting location...</span></p>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-outline btn-full" onclick="closeEmergencyModal()" style="border-color:#C62828;color:#C62828">Cancel - I'm Safe</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Emergency Contact Setup Modal -->
+        <div class="modal-overlay" id="emergencySetupModal">
+            <div class="modal">
+                <h2>🚨 Set Up Emergency Contact</h2>
+                <p style="color:var(--text-secondary);margin-bottom:16px">Add someone who should be notified in case of emergency.</p>
+                
+                <div class="input-group">
+                    <label for="emergencyContactName">Contact Name</label>
+                    <input type="text" id="emergencyContactName" placeholder="e.g., My Daughter" maxlength="30">
+                </div>
+                
+                <div class="input-group">
+                    <label for="emergencyContactPhone">Phone Number</label>
+                    <input type="tel" id="emergencyContactPhone" placeholder="e.g., 555-123-4567" maxlength="20">
+                </div>
+                
+                <div style="background:#E8F5E9;padding:12px;border-radius:8px;margin-bottom:16px">
+                    <p style="margin:0;font-size:14px">✓ This information is stored only on your device for privacy</p>
+                </div>
+                
+                <div class="modal-actions">
+                    <button class="btn btn-outline" onclick="closeEmergencySetupModal()">Skip</button>
+                    <button class="btn btn-primary" onclick="saveEmergencyContact()">Save Contact</button>
                 </div>
             </div>
         </div>
@@ -1824,6 +1890,141 @@
         function closeFeedbackModal() {
             document.getElementById('feedbackModal').classList.remove('active');
         }
+
+        // ===== Emergency System =====
+        let emergencyContact = null;
+
+        function loadEmergencyContact() {
+            const saved = localStorage.getItem('goldenbuddy_emergency_contact');
+            if (saved) {
+                emergencyContact = JSON.parse(saved);
+            }
+        }
+
+        function showEmergencyModal() {
+            // Load emergency contact if not already loaded
+            if (!emergencyContact) {
+                loadEmergencyContact();
+            }
+            
+            // Check if emergency contact is set up
+            if (!emergencyContact || !emergencyContact.phone) {
+                showEmergencySetupModal();
+                return;
+            }
+            
+            // Try to get location
+            document.getElementById('emergencyLocation').textContent = 'Getting location...';
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude.toFixed(4);
+                        const lng = position.coords.longitude.toFixed(4);
+                        document.getElementById('emergencyLocation').textContent = `Lat: ${lat}, Lng: ${lng}`;
+                        state.emergencyLocation = { lat, lng };
+                    },
+                    () => {
+                        document.getElementById('emergencyLocation').textContent = 'Location not available';
+                    },
+                    { timeout: 10000 }
+                );
+            } else {
+                document.getElementById('emergencyLocation').textContent = 'Location not supported';
+            }
+            
+            document.getElementById('emergencyModal').classList.add('active');
+        }
+
+        function closeEmergencyModal() {
+            document.getElementById('emergencyModal').classList.remove('active');
+        }
+
+        function showEmergencySetupModal() {
+            document.getElementById('emergencySetupModal').classList.add('active');
+        }
+
+        function closeEmergencySetupModal() {
+            document.getElementById('emergencySetupModal').classList.remove('active');
+        }
+
+        function saveEmergencyContact() {
+            const name = document.getElementById('emergencyContactName').value.trim();
+            const phone = document.getElementById('emergencyContactPhone').value.trim();
+            
+            if (!name || !phone) {
+                showNotification('Please enter both name and phone number', 'error');
+                return;
+            }
+            
+            emergencyContact = { name, phone };
+            localStorage.setItem('goldenbuddy_emergency_contact', JSON.stringify(emergencyContact));
+            closeEmergencySetupModal();
+            showNotification('✅ Emergency contact saved!', 'success');
+        }
+
+        function callEmergency() {
+            window.location.href = 'tel:911';
+            logEmergencyAction('Called 911');
+        }
+
+        function callEmergencyContact() {
+            if (!emergencyContact || !emergencyContact.phone) {
+                showNotification('No emergency contact set up', 'error');
+                showEmergencySetupModal();
+                return;
+            }
+            window.location.href = 'tel:' + emergencyContact.phone;
+            logEmergencyAction('Called emergency contact: ' + emergencyContact.name);
+        }
+
+        function textEmergencyContact() {
+            if (!emergencyContact || !emergencyContact.phone) {
+                showNotification('No emergency contact set up', 'error');
+                showEmergencySetupModal();
+                return;
+            }
+            
+            let message = `EMERGENCY: I need help! This is ${state.userData?.name || 'your contact'}. `;
+            
+            if (state.emergencyLocation) {
+                message += `My location: https://maps.google.com/?q=${state.emergencyLocation.lat},${state.emergencyLocation.lng} `;
+            }
+            
+            if (state.connection && state.connection.name) {
+                message += `I was meeting ${state.connection.name}. `;
+            }
+            
+            message += 'Please call me!';
+            
+            window.location.href = `sms:${emergencyContact.phone}?body=${encodeURIComponent(message)}`;
+            logEmergencyAction('Texted emergency contact: ' + emergencyContact.name);
+        }
+
+        function logEmergencyAction(action) {
+            const log = {
+                action: action,
+                timestamp: Date.now(),
+                userId: state.userId,
+                userName: state.userData?.name || 'Unknown'
+            };
+            
+            // Save to local history
+            const history = JSON.parse(localStorage.getItem('goldenbuddy_emergency_log') || '[]');
+            history.push(log);
+            localStorage.setItem('goldenbuddy_emergency_log', JSON.stringify(history));
+            
+            // Also try to save to Firebase for safety monitoring
+            if (window.db) {
+                window.db.ref('emergency_logs').push(log).catch(() => {
+                    // Silent fail - local storage is backup
+                });
+            }
+            
+            closeEmergencyModal();
+        }
+
+        // Load emergency contact on init
+        loadEmergencyContact();
 
         function filterActivity(activity, btn) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
